@@ -66,6 +66,16 @@ public class Mytix {
         }
     }
 
+    private static boolean helper_customer_exists(Connection conn, int uid) throws SQLException {
+        try (PreparedStatement stmt = conn.prepareStatement("SELECT COUNT(*) FROM Customers WHERE uid = ?")) {
+            stmt.setInt(1, uid);
+
+            ResultSet rs = stmt.executeQuery();
+            rs.next();
+            return rs.getInt(1) > 0;
+        }
+    }
+
     private static boolean helper_event_exists(Connection conn, int eid, int uid) throws SQLException {
         try (PreparedStatement stmt = conn.prepareStatement("SELECT COUNT(*) FROM Events WHERE eid = ? AND uid = ?")) {
             stmt.setInt(1, eid);
@@ -87,10 +97,20 @@ public class Mytix {
         }
     }
 
-    private static boolean helper_performance_exists(Connection conn, int pid, int eid) throws SQLException {
+    private static boolean helper_performance_exists_witheid(Connection conn, int pid, int eid) throws SQLException {
         try (PreparedStatement stmt = conn.prepareStatement("SELECT COUNT(*) FROM Performances WHERE pid = ? AND eid = ?")) {
             stmt.setInt(1, pid);
             stmt.setInt(2, eid);
+
+            ResultSet rs = stmt.executeQuery();
+            rs.next();
+            return rs.getInt(1) > 0;
+        }
+    }
+
+    private static boolean helper_performance_exists(Connection conn, int pid) throws SQLException {
+        try (PreparedStatement stmt = conn.prepareStatement("SELECT COUNT(*) FROM Performances WHERE pid = ? and cancelled = false")) {
+            stmt.setInt(1, pid);
 
             ResultSet rs = stmt.executeQuery();
             rs.next();
@@ -113,12 +133,105 @@ public class Mytix {
         }
     }
 
+    private static boolean helper_general_section_exists(Connection conn, String section, int pid) throws SQLException {
+        try (PreparedStatement stmt = conn.prepareStatement(
+                "SELECT COUNT(*) " +
+                "FROM General_sections JOIN Performances ON General_sections.venue_name = Performances.venue_name " +
+                "WHERE Performances.pid = ? AND General_sections.name = ?" )) {
+            stmt.setInt(1, pid);
+            stmt.setString(2, section);
+
+            ResultSet rs = stmt.executeQuery();
+            rs.next();
+
+            return rs.getInt(1) > 0;
+        }
+    }
+
+    private static boolean helper_seat_exists(Connection conn, int seat, int row, String section, int pid) throws SQLException {
+        try (PreparedStatement stmt = conn.prepareStatement(
+                "SELECT COUNT(*) " +
+                "FROM Seats JOIN Performances ON Seats.venue_name = Performances.venue_name " +
+                "WHERE Seats.seat = ? AND Seats.row = ? AND Seats.section_name = ? AND Performances.pid = ?")) {
+            stmt.setInt(1, seat);
+            stmt.setInt(2, row);
+            stmt.setString(3, section);
+            stmt.setInt(4, pid);
+
+            ResultSet rs = stmt.executeQuery();
+            rs.next();
+
+            return rs.getInt(1) > 0;
+        }
+    }
+
+    private static boolean helper_seat_sold(Connection conn, int seat, int row, String section, int pid) throws SQLException {
+        try (PreparedStatement stmt = conn.prepareStatement(
+                "SELECT COUNT(*) " +
+                "FROM Tickets JOIN Orders ON Tickets.oid = Orders.oid " +
+                "             JOIN Reserved_tickets ON Tickets.tid = Reserved_tickets.tid " +
+                "WHERE Orders.pid = ? AND Tickets.cancelled = false AND Reserved_tickets.seat = ? " +
+                "                     AND Reserved_tickets.row = ? AND Reserved_tickets.section_name = ?")) {
+            stmt.setInt(1, pid);
+            stmt.setInt(2, seat);
+            stmt.setInt(3, row);
+            stmt.setString(4, section);
+
+            ResultSet rs = stmt.executeQuery();
+            rs.next();
+
+            return rs.getInt(1) > 0;
+            }
+    }
+
+    private static boolean helper_seat_blocked(Connection conn, int seat, int row, String section, int pid) throws SQLException {
+        try (PreparedStatement stmt = conn.prepareStatement(
+                "SELECT COUNT(*) " +
+                "FROM Block " +
+                "WHERE seat = ? AND row = ? AND section_name = ? AND pid = ?")) {
+            stmt.setInt(1, seat);
+            stmt.setInt(2, row);
+            stmt.setString(3, section);
+            stmt.setInt(4, pid);
+
+            ResultSet rs = stmt.executeQuery();
+            rs.next();
+
+            return rs.getInt(1) > 0;
+        }
+    }
+
+    private static boolean helper_general_ticket_available(Connection conn, String section, int pid) throws SQLException {
+        try (PreparedStatement stmt = conn.prepareStatement(
+            "SELECT General_sections.total_capacity - COUNT(General_tickets.tid) AS available " +
+            "FROM General_sections JOIN Performances ON General_sections.venue_name = Performances.venue_name " +
+            "                      LEFT JOIN Orders ON Orders.pid = Performances.pid " +
+            "                      LEFT JOIN Tickets ON Tickets.oid = Orders.oid AND Tickets.cancelled = false " +
+            "                      LEFT JOIN General_tickets ON General_tickets.tid = Tickets.tid " +
+            "                                                AND General_tickets.section_name = General_sections.name " +
+            "WHERE Performances.pid = ? " +
+            "  AND General_sections.name = ? " +
+            "GROUP BY General_sections.total_capacity")) {
+
+            stmt.setInt(1, pid);
+            stmt.setString(2, section);
+
+            try (ResultSet rs = stmt.executeQuery()) {
+                return rs.next() && rs.getInt("available") > 0;
+            }
+        }
+    }
+
     private static void print_operations_options () {
         System.out.print("1. Create a profile.\n");
         System.out.print("2. Delete a profile.\n");
         System.out.print("3. Create an event.\n");
         System.out.print("4. Create a performance.\n");
         System.out.print("5. Define pricetiers and assign to sections.\n");
+        System.out.print("6. Set resale cap of an event.\n");
+        System.out.print("7. Update price tier price.\n");
+        System.out.print("8. Block or unblock seat.\n");
+        System.out.print("9. Book tickets.\n");
     }
 
     private static void operations (Connection conn, Scanner scanner) throws SQLException {
@@ -135,6 +248,14 @@ public class Mytix {
             o4_create_performance(conn, scanner);
         else if (choice.equals("5"))
             o5_define_pricetier_and_assign_to_section(conn, scanner);
+        else if (choice.equals("6"))
+            o6_set_event_resale_cap(conn, scanner);
+        else if (choice.equals("7"))
+            o7_update_pricetier(conn, scanner);
+        else if (choice.equals("8"))
+            o8_block_or_unblock_seat(conn, scanner);
+        else if (choice.equals("9"))
+            o9_book_ticket(conn, scanner);
         else
             System.out.println("Invalid choice.\n");
     }
@@ -181,30 +302,32 @@ public class Mytix {
     }
 
     private static void o1_create_profile(Connection conn, Scanner scanner) throws SQLException {
-        System.out.print("Enter your name:\n");
+        System.out.print("Enter name:\n");
         String name = scanner.nextLine();
-        System.out.print("Enter your address:\n");
+        System.out.print("Enter address:\n");
         String address = scanner.nextLine();
-        System.out.print("Enter your email:\n");
+        System.out.print("Enter email:\n");
         String email = scanner.nextLine();
-        System.out.print("Enter your date-of-birth: YYYY-MM-DD\n");
+        System.out.print("Enter date-of-birth: YYYY-MM-DD\n");
         String dob = scanner.nextLine();
-        java.sql.Date date_of_birth = java.sql.Date.valueOf(dob);
-        if (date_of_birth.after(java.sql.Date.valueOf(java.time.LocalDate.now().minusYears(18)))) {
-            System.out.println("You have to be at least 18 years old to create a profile.\n");
+        java.sql.Date dob_date;
+        try {
+            dob_date = java.sql.Date.valueOf(dob);
+        }
+        catch (IllegalArgumentException e) {
+            System.out.print("Invalid date format.\n");
+            return;
+        }
+        if (dob_date.after(java.sql.Date.valueOf(java.time.LocalDate.now().minusYears(18)))) {
+            System.out.print("You have to be at least 18 years old to create a profile.\n");
             return;
         }
 
-        System.out.print("Are you a customer or an organizer? c/o\n");
+        System.out.print("Are you a customer or organizer? c/o\n");
         String role = scanner.nextLine();
-        if (!role.equals("c") && !role.equals("o")) {
-            System.out.print("Invalid choice.\n");
-            return;
-        }
-
-        conn.setAutoCommit(false);
 
         try {
+            conn.setAutoCommit(false);
             int uid;
             PreparedStatement ps = conn.prepareStatement(
                 "INSERT INTO Users (name, address, email, date_of_birth) VALUES (?, ?, ?, ?)",
@@ -214,7 +337,7 @@ public class Mytix {
             ps.setString(1, name);
             ps.setString(2, address);
             ps.setString(3, email);
-            ps.setDate(4, date_of_birth);
+            ps.setDate(4, dob_date);
             ps.executeUpdate();
 
             ResultSet keys = ps.getGeneratedKeys();
@@ -234,12 +357,16 @@ public class Mytix {
                 customerps.setString(2, card);
                 customerps.executeUpdate();
             }
-            else {
+            else if (role.equals("o")) {
                 PreparedStatement organizerps = conn.prepareStatement(
                     "INSERT INTO Organizers (uid) VALUES (?)"
                 );
                 organizerps.setInt(1, uid);
                 organizerps.executeUpdate();
+            }
+            else {
+                System.out.print("Invalid choice.\n");
+                return;
             }
 
             conn.commit();
@@ -266,11 +393,13 @@ public class Mytix {
             );
             customerps.setInt(1, uid);
             customerps.executeUpdate();
+
             PreparedStatement organizerps = conn.prepareStatement(
                 "DELETE FROM Organizers WHERE uid = ?"
             );
             organizerps.setInt(1, uid);
             organizerps.executeUpdate();
+
             PreparedStatement userps = conn.prepareStatement(
                 "DELETE FROM Users WHERE uid = ?"
             );
@@ -279,7 +408,7 @@ public class Mytix {
             int success = userps.executeUpdate();
             if (success == 0) {
                 conn.rollback();
-                System.out.print("Invalid UID.\n");
+                System.out.print("Failed to delete profile.\n");
             }
             else {
                 conn.commit();
@@ -321,26 +450,27 @@ public class Mytix {
 
         try {
             int eid;
-            PreparedStatement ps = conn.prepareStatement(
+            try (PreparedStatement ps = conn.prepareStatement(
                 "INSERT INTO Events (name, resale_cap, uid, genre) VALUES (?, ?, ?, ?)",
                 Statement.RETURN_GENERATED_KEYS
-            );
+            )) {
 
-            ps.setString(1, name);
-            ps.setBigDecimal(2, resaleCap);
-            ps.setInt(3, uid);
-            ps.setString(4, genre);
-            ps.executeUpdate();
+                ps.setString(1, name);
+                ps.setBigDecimal(2, resaleCap);
+                ps.setInt(3, uid);
+                ps.setString(4, genre);
+                ps.executeUpdate();
 
-            ResultSet keys = ps.getGeneratedKeys();
+                ResultSet keys = ps.getGeneratedKeys();
 
-            if (!keys.next())
-                throw new SQLException("Creating event failed: generating EID failed");
-            eid = keys.getInt(1);
-            keys.close();
+                if (!keys.next())
+                    throw new SQLException("Creating event failed: generating EID failed");
+                eid = keys.getInt(1);
+                keys.close();
 
-            conn.commit();
-            System.out.printf("Your event is created. EID: %d\n", eid);
+                conn.commit();
+                System.out.printf("Your event is created. EID: %d\n", eid);
+            }
         }
         catch (SQLException e) {
             conn.rollback();
@@ -365,16 +495,16 @@ public class Mytix {
             "WHERE uid = ?")) {
             eventps.setInt(1, uid);
 
-        try (ResultSet rs = eventps.executeQuery()) {
-            System.out.printf("%-10s %-30s%n", "EID", "Event name");
-            System.out.println("-".repeat(40));
+            try (ResultSet rs = eventps.executeQuery()) {
+                System.out.printf("%-10s %-30s%n", "EID", "Event name");
+                System.out.println("-".repeat(40));
 
-            while (rs.next()) {
-                System.out.printf("%-10d %-30s%n",
-                    rs.getInt("eid"),
-                    rs.getString("name"));
+                while (rs.next()) {
+                    System.out.printf("%-10d %-30s%n",
+                        rs.getInt("eid"),
+                        rs.getString("name"));
+                }
             }
-        }
         }
 
         System.out.print("Enter EID:\n");
@@ -386,6 +516,19 @@ public class Mytix {
 
         System.out.print("Enter datetime: YYYY-MM-DD HH:MM:SS\n");
         String datetime = scanner.nextLine();
+        Timestamp datetime_time;
+        try {
+            datetime_time = Timestamp.valueOf(datetime);
+        }
+        catch (IllegalArgumentException e) {
+            System.out.print("Invalid datetime format.\n");
+            return;
+        }
+
+        if (!datetime_time.after(new Timestamp(System.currentTimeMillis()))) {
+            System.out.println("Only future performances can be created.");
+            return;
+        }
 
         System.out.print("Enter venue name:\n");
         String venue = scanner.nextLine();
@@ -403,7 +546,7 @@ public class Mytix {
                 Statement.RETURN_GENERATED_KEYS
             );
 
-            ps.setString(1, datetime);
+            ps.setTimestamp(1, datetime_time);
             ps.setInt(2, eid);
             ps.setString(3, venue);
             ps.executeUpdate();
@@ -416,7 +559,7 @@ public class Mytix {
             keys.close();
 
             conn.commit();
-            System.out.printf("Your performance is created. PID: %d\n", pid);
+            System.out.printf("Performance is created. PID: %d\n", pid);
         }
         catch (SQLException e) {
             conn.rollback();
@@ -495,7 +638,7 @@ public class Mytix {
         System.out.print("Enter PID:\n");
         int pid = Integer.parseInt(scanner.nextLine());
 
-        if (!helper_performance_exists(conn, pid, eid)) {
+        if (!helper_performance_exists_witheid(conn, pid, eid)) {
             System.out.print("Invalid PID.\n");
             return;
         }
@@ -629,7 +772,562 @@ public class Mytix {
             System.out.print(
                     "Price tiers created and assigned successfully.\n");
         }
-        catch (SQLException e | RuntimeException e) {
+        catch (SQLException | RuntimeException e) {
+            conn.rollback();
+            throw e;
+        }
+        finally {
+            conn.setAutoCommit(true);
+        }
+    }
+
+    private static void o6_set_event_resale_cap(Connection conn, Scanner scanner) throws SQLException {
+        System.out.print("Enter your UID\n");
+        int uid = Integer.parseInt(scanner.nextLine());
+        if (!helper_organizer_exists(conn, uid)) {
+            System.out.print("Invalid UID.\n");
+            return;
+        }
+        System.out.print("Here are the events you have created:\n");
+        try (PreparedStatement eventps = conn.prepareStatement(
+            "SELECT eid, name " +
+            "FROM Events " +
+            "WHERE uid = ?")) {
+            eventps.setInt(1, uid);
+
+            try (ResultSet rs = eventps.executeQuery()) {
+                System.out.printf("%-10s %-30s%n", "EID", "Event name");
+                System.out.println("-".repeat(40));
+
+                while (rs.next()) {
+                    System.out.printf("%-10d %-30s%n",
+                        rs.getInt("eid"),
+                        rs.getString("name"));
+                }
+            }
+        }
+
+        System.out.print("Which one do you want to set resale cap? Enter EID:\n");
+        int eid = Integer.parseInt(scanner.nextLine());
+        if (!helper_event_exists(conn, eid, uid)) {
+            System.out.print("Invalid EID.\n");
+            return;
+        }
+
+        System.out.print("Enter the new resale cap: in percentage, e.g. 120\n");
+        BigDecimal resaleCap = new BigDecimal(scanner.nextLine());
+
+        if (resaleCap.compareTo(BigDecimal.ZERO) <= 0) {
+            System.out.print("Resale cap must be greater than 0.\n");
+            return;
+        }
+
+        try (PreparedStatement ps = conn.prepareStatement(
+                "UPDATE Events " +
+                "SET resale_cap = ? " +
+                "WHERE eid = ?")) {
+            ps.setBigDecimal(1, resaleCap);
+            ps.setInt(2, eid);
+
+            int success = ps.executeUpdate();
+
+            if (success == 0)
+                System.out.print("Failed to update resale cap.\n");
+            else
+                System.out.print("Resale cap updated successfully.\n");
+        }
+    }
+
+    private static void o7_update_pricetier(Connection conn, Scanner scanner) throws SQLException {
+        System.out.print("Enter your UID:\n");
+        int uid = Integer.parseInt(scanner.nextLine());
+
+        if (!helper_organizer_exists(conn, uid)) {
+            System.out.print("Invalid UID.\n");
+            return;
+        }
+
+        System.out.print("Here are the events you have created:\n");
+
+        try (PreparedStatement eventps = conn.prepareStatement(
+                "SELECT eid, name " +
+                "FROM Events " +
+                "WHERE uid = ?")) {
+            eventps.setInt(1, uid);
+
+            try (ResultSet rs = eventps.executeQuery()) {
+                System.out.printf(
+                        "%-10s %-30s%n",
+                        "EID", "Event name");
+                System.out.println("-".repeat(40));
+
+                while (rs.next()) {
+                    System.out.printf(
+                            "%-10d %-30s%n",
+                            rs.getInt("eid"),
+                            rs.getString("name"));
+                }
+            }
+        }
+
+        System.out.print("Enter EID:\n");
+        int eid = Integer.parseInt(scanner.nextLine());
+
+        if (!helper_event_exists(conn, eid, uid)) {
+            System.out.print("Invalid EID.\n");
+            return;
+        }
+
+        System.out.print(
+                "Here are the performances of this event:\n");
+
+        try (PreparedStatement performances = conn.prepareStatement(
+                "SELECT pid, datetime, venue_name " +
+                "FROM Performances " +
+                "WHERE eid = ?")) {
+            performances.setInt(1, eid);
+
+            try (ResultSet rs = performances.executeQuery()) {
+                System.out.printf(
+                        "%-10s %-25s %-30s%n",
+                        "PID", "Datetime", "Venue");
+                System.out.println("-".repeat(65));
+
+                while (rs.next()) {
+                    System.out.printf(
+                            "%-10d %-25s %-30s%n",
+                            rs.getInt("pid"),
+                            rs.getString("datetime"),
+                            rs.getString("venue_name"));
+                }
+            }
+        }
+
+        System.out.print("Enter PID:\n");
+        int pid = Integer.parseInt(scanner.nextLine());
+        if (!helper_performance_exists_witheid(conn, pid, eid)) {
+            System.out.print("Invalid PID.\n");
+            return;
+        }
+
+        try (PreparedStatement date = conn.prepareStatement(
+            "SELECT datetime " +
+            "FROM Performances " +
+            "WHERE pid = ?"
+        )) {
+            date.setInt(1, pid);
+
+            try (ResultSet rs = date.executeQuery()) {
+                rs.next();
+                Timestamp time = rs.getTimestamp("datetime");
+
+                if (!time.after(new Timestamp(System.currentTimeMillis()))) {
+                    System.out.println("Only future performances can be updated.");
+                    return;
+                }
+            }
+        }
+
+        System.out.print("Which price tier do you want to update? Enter the name:\n");
+        String name = scanner.nextLine();
+        if (!helper_pricetier_exists(conn, name, pid)) {
+            System.out.print("Invalid price tier.\n");
+            return;
+        }
+
+        System.out.print("Enter the new price:\n");
+        BigDecimal price = new BigDecimal(scanner.nextLine());
+        if (price.compareTo(BigDecimal.ZERO) <= 0) {
+            System.out.print("Price must be greater than 0.\n");
+            return;
+        }
+
+        int sold = 0;
+
+        try (PreparedStatement pricetier1ps = conn.prepareStatement(
+            "SELECT COUNT(*) " +
+            "FROM Price_tiers JOIN Section_pricetier ON Section_pricetier.pid = Price_tiers.pid " +
+            "                       AND Section_pricetier.pricetier_name = Price_tiers.name " +
+            "                 JOIN Reserved_tickets ON Section_pricetier.section_name = Reserved_tickets.section_name " +
+            "                 JOIN Tickets ON Reserved_tickets.tid = Tickets.tid " +
+            "                 JOIN Orders ON Tickets.oid = Orders.oid " +
+            "                             AND Orders.pid = Price_tiers.pid " +
+            "WHERE Price_tiers.name = ? AND Price_tiers.pid = ? AND Tickets.cancelled = false"
+        )) {
+            pricetier1ps.setString(1, name);
+            pricetier1ps.setInt(2, pid);
+
+            ResultSet rs = pricetier1ps.executeQuery();
+            rs.next();
+
+            if (rs.getInt(1) > 0)
+                sold = 1;
+        }
+
+        if (sold == 0) {
+        try (PreparedStatement pricetier2ps = conn.prepareStatement(
+            "SELECT COUNT(*) " +
+            "FROM Price_tiers JOIN Section_pricetier ON Section_pricetier.pid = Price_tiers.pid " +
+            "                       AND Section_pricetier.pricetier_name = Price_tiers.name " +
+            "                 JOIN General_tickets ON Section_pricetier.section_name = General_tickets.section_name " +
+            "                 JOIN Tickets ON General_tickets.tid = Tickets.tid " +
+            "                 JOIN Orders ON Tickets.oid = Orders.oid " +
+            "                             AND Orders.pid = Price_tiers.pid " +
+            "WHERE Price_tiers.name = ? AND Price_tiers.pid = ? AND Tickets.cancelled = false"
+        )) {
+            pricetier2ps.setString(1, name);
+            pricetier2ps.setInt(2, pid);
+
+            ResultSet rs = pricetier2ps.executeQuery();
+            rs.next();
+
+            if (rs.getInt(1) > 0)
+                sold = 1;
+        }
+        }
+
+        if (sold == 1) {
+            System.out.print("Sorry, since there are tickets sold in this price tier, you cannot update the price.\n");
+            return;
+        }
+
+        try (PreparedStatement ps = conn.prepareStatement(
+                "UPDATE Price_tiers " +
+                "SET price = ? " +
+                "WHERE name = ? AND pid = ?"
+        )) {
+            ps.setBigDecimal(1, price);
+            ps.setString(2, name);
+            ps.setInt(3, pid);
+            int rows = ps.executeUpdate();
+            if (rows == 1)
+                System.out.println("Price updated successfully.");
+            else
+                System.out.println("Failed to update price.");
+        }
+    }
+
+    private static void o8_block_or_unblock_seat(Connection conn, Scanner scanner) throws SQLException {
+        System.out.print("Enter your UID:\n");
+        int uid = Integer.parseInt(scanner.nextLine());
+
+        if (!helper_organizer_exists(conn, uid)) {
+            System.out.print("Invalid UID.\n");
+            return;
+        }
+
+        System.out.print("Here are the events you have created:\n");
+
+        try (PreparedStatement eventps = conn.prepareStatement(
+                "SELECT eid, name " +
+                "FROM Events " +
+                "WHERE uid = ?")) {
+            eventps.setInt(1, uid);
+
+            try (ResultSet rs = eventps.executeQuery()) {
+                System.out.printf(
+                        "%-10s %-30s%n",
+                        "EID", "Event name");
+                System.out.println("-".repeat(40));
+
+                while (rs.next()) {
+                    System.out.printf(
+                            "%-10d %-30s%n",
+                            rs.getInt("eid"),
+                            rs.getString("name"));
+                }
+            }
+        }
+
+        System.out.print("Enter EID:\n");
+        int eid = Integer.parseInt(scanner.nextLine());
+
+        if (!helper_event_exists(conn, eid, uid)) {
+            System.out.print("Invalid EID.\n");
+            return;
+        }
+
+        System.out.print(
+                "Here are the performances of this event:\n");
+
+        try (PreparedStatement performances = conn.prepareStatement(
+                "SELECT pid, datetime, venue_name " +
+                "FROM Performances " +
+                "WHERE eid = ?")) {
+            performances.setInt(1, eid);
+
+            try (ResultSet rs = performances.executeQuery()) {
+                System.out.printf(
+                        "%-10s %-25s %-30s%n",
+                        "PID", "Datetime", "Venue");
+                System.out.println("-".repeat(65));
+
+                while (rs.next()) {
+                    System.out.printf(
+                            "%-10d %-25s %-30s%n",
+                            rs.getInt("pid"),
+                            rs.getString("datetime"),
+                            rs.getString("venue_name"));
+                }
+            }
+        }
+
+        System.out.print("Enter PID:\n");
+        int pid = Integer.parseInt(scanner.nextLine());
+        if (!helper_performance_exists_witheid(conn, pid, eid)) {
+            System.out.print("Invalid PID.\n");
+            return;
+        }
+
+        try (PreparedStatement date = conn.prepareStatement(
+            "SELECT datetime " +
+            "FROM Performances " +
+            "WHERE pid = ?"
+        )) {
+            date.setInt(1, pid);
+
+            try (ResultSet rs = date.executeQuery()) {
+                rs.next();
+                Timestamp time = rs.getTimestamp("datetime");
+
+                if (!time.after(new Timestamp(System.currentTimeMillis()))) {
+                    System.out.println("Only future performances can be updated.");
+                    return;
+                }
+            }
+        }
+
+        System.out.print("Enter section name:\n");
+        String section = scanner.nextLine();
+        System.out.print("Enter row number:\n");
+        int row = Integer.parseInt(scanner.nextLine());
+        System.out.print("Enter seat number:\n");
+        int seat = Integer.parseInt(scanner.nextLine());
+        System.out.print("Would you like to block or unblock this seat? b/u\n");
+        String choice = scanner.nextLine();
+
+        if (choice.equals("b")) {
+            if (!helper_seat_exists(conn, seat, row, section, pid)) {
+                System.out.print("The seat doesn't exist.\n");
+                return;
+            }
+            if (helper_seat_sold(conn, seat, row, section, pid)) {
+                System.out.print("The seat cannot be blocked because it is sold.\n");
+                return;
+            }
+            try (PreparedStatement bps2 = conn.prepareStatement(
+                "INSERT INTO Block (pid, seat, row, section_name) VALUES (?, ?, ?, ?)"
+            )) {
+                bps2.setInt(1, pid);
+                bps2.setInt(2, seat);
+                bps2.setInt(3, row);
+                bps2.setString(4, section);
+                int rows = bps2.executeUpdate();
+                if (rows == 1)
+                    System.out.println("Seat blocked successfully.");
+                else
+                    System.out.println("Failed to block seat.");
+            }
+        }
+        else if (choice.equals("u")) {
+            try (PreparedStatement ups = conn.prepareStatement(
+                "DELETE FROM Block WHERE pid = ? AND seat = ? AND row = ? AND section_name = ?"
+            )) {
+                ups.setInt(1, pid);
+                ups.setInt(2, seat);
+                ups.setInt(3, row);
+                ups.setString(4, section);
+                int rows = ups.executeUpdate();
+                if (rows == 1)
+                    System.out.println("Seat unblocked successfully.");
+                else
+                    System.out.println("Operation failed. The seat is currently not blocked.");
+            }
+        }
+        else {
+            System.out.println("Invalid choice.");
+        }
+    }
+
+    private static void o9_book_ticket(Connection conn, Scanner scanner) throws SQLException {
+        System.out.print("Enter your UID:\n");
+        int uid = Integer.parseInt(scanner.nextLine());
+        if (!helper_customer_exists(conn, uid)) {
+            System.out.print("You don't have an account yet.\n");
+            return;
+        }
+
+        System.out.print("Enter PID:\n");
+        int pid = Integer.parseInt(scanner.nextLine());
+        if (!helper_performance_exists(conn, pid)) {
+            System.out.print("Invalid PID.\n");
+            return;
+        }
+
+        try (PreparedStatement date = conn.prepareStatement(
+            "SELECT datetime " +
+            "FROM Performances " +
+            "WHERE pid = ?"
+        )) {
+            date.setInt(1, pid);
+
+            try (ResultSet rs = date.executeQuery()) {
+                rs.next();
+                Timestamp time = rs.getTimestamp("datetime");
+
+                if (!time.after(new Timestamp(System.currentTimeMillis()))) {
+                    System.out.println("Only future performances tickets can be booked.");
+                    return;
+                }
+            }
+        }
+
+        System.out.print("How many tickets are you going to book?\n");
+        int num = Integer.parseInt(scanner.nextLine());
+        if (num <= 0) {
+            System.out.print("Number of tickets must be greater than 0.\n");
+            return;
+        }
+
+        try{
+            conn.setAutoCommit(false);
+
+            Timestamp now = new Timestamp(System.currentTimeMillis());
+
+            String venue;
+            int oid;
+
+            try (PreparedStatement orderps = conn.prepareStatement(
+                "INSERT INTO Orders (uid, pid, datetime) VALUES (?, ?, ?)",
+                Statement.RETURN_GENERATED_KEYS
+            )) {
+                orderps.setInt(1, uid);
+                orderps.setInt(2, pid);
+                orderps.setTimestamp(3, now);
+                orderps.executeUpdate();
+
+                ResultSet keys = orderps.getGeneratedKeys();
+                if (!keys.next())
+                    throw new SQLException("Creating order failed: generating OID failed");
+                oid = keys.getInt(1);
+                keys.close();
+            }
+
+            try (PreparedStatement venueps = conn.prepareStatement(
+                "SELECT venue_name " +
+                "FROM Performances " +
+                "WHERE pid = ?"
+            )) {
+                venueps.setInt(1, pid);
+                ResultSet rs = venueps.executeQuery();
+                rs.next();
+                venue = rs.getString(1);
+            }
+
+            for (int i=0; i<num;) {
+                System.out.print("Would you like to book reserved or general ticket? r/g\n");
+                String type = scanner.nextLine();
+                if (type.equals("r")) {
+                    System.out.print("Enter section name:\n");
+                    String section = scanner.nextLine();
+                    System.out.print("Enter row number:\n");
+                    int row = Integer.parseInt(scanner.nextLine());
+                    System.out.print("Enter seat number:\n");
+                    int seat = Integer.parseInt(scanner.nextLine());
+                    if (!helper_seat_exists(conn, seat, row, section, pid)) {
+                        System.out.print("The seat doesn't exist. Ticket not booked.\n");
+                        continue;
+                    }
+                    else if (helper_seat_sold(conn, seat, row, section, pid)) {
+                        System.out.print("The seat is sold. Ticket not booked.\n");
+                        continue;
+                    }
+                    else if (helper_seat_blocked(conn, seat, row, section, pid)) {
+                        System.out.print("The seat is blocked. Ticket not booked.\n");
+                        continue;
+                    }
+                    int tid;
+                    try (PreparedStatement tps = conn.prepareStatement(
+                        "INSERT INTO Tickets (face_value, cancelled, oid) VALUES (" +
+                        "(SELECT Price_tiers.price " +
+                        "FROM Section_pricetier JOIN Price_tiers ON Section_pricetier.pricetier_name = Price_tiers.name" +
+                        "                                        AND Section_pricetier.pid = Price_tiers.pid " +
+                        "WHERE Section_pricetier.section_name = ? AND Section_pricetier.pid = ?), " +
+                        "false, ?)",
+                        Statement.RETURN_GENERATED_KEYS
+                    )) {
+                        tps.setString(1, section);
+                        tps.setInt(2, pid);
+                        tps.setInt(3, oid);
+                        tps.executeUpdate();
+                        ResultSet keys = tps.getGeneratedKeys();
+                        if (!keys.next())
+                            throw new SQLException("Creating ticket failed: generating TID failed.");
+                        tid = keys.getInt(1);
+                        keys.close();
+                    }
+                    try (PreparedStatement rtps = conn.prepareStatement(
+                        "INSERT INTO Reserved_tickets (tid, seat, row, section_name, venue_name) VALUES (?, ?, ?, ?, ?) "
+                    )) {
+                        rtps.setInt(1, tid);
+                        rtps.setInt(2, seat);
+                        rtps.setInt(3, row);
+                        rtps.setString(4, section);
+                        rtps.setString(5, venue);
+                        rtps.executeUpdate();
+                        System.out.println("Ticket booked successfully.");
+                        i++;
+                    }
+                }
+                else if (type.equals("g")) {
+                    System.out.print("Enter section name:\n");
+                    String section = scanner.nextLine();
+                    if (!helper_general_section_exists(conn, section, pid)) {
+                        System.out.print("Section doesn't exist. Ticket not booked.\n");
+                        continue;
+                    }
+                    if (!helper_general_ticket_available(conn, section, pid)) {
+                        System.out.print("Section tickets sold out. Ticket not booked.\n");
+                        continue;
+                    }
+                    int tid;
+                    try (PreparedStatement tps = conn.prepareStatement(
+                        "INSERT INTO Tickets (face_value, cancelled, oid) VALUES (" +
+                        "(SELECT Price_tiers.price " +
+                        "FROM Section_pricetier JOIN Price_tiers ON Section_pricetier.pricetier_name = Price_tiers.name" +
+                        "                                        AND Section_pricetier.pid = Price_tiers.pid " +
+                        "WHERE Section_pricetier.section_name = ? AND Section_pricetier.pid = ?), " +
+                        "false, ?)",
+                        Statement.RETURN_GENERATED_KEYS
+                    )) {
+                        tps.setString(1, section);
+                        tps.setInt(2, pid);
+                        tps.setInt(3, oid);
+                        tps.executeUpdate();
+                        ResultSet keys = tps.getGeneratedKeys();
+                        if (!keys.next())
+                            throw new SQLException("Creating ticket failed: generating TID failed.");
+                        tid = keys.getInt(1);
+                        keys.close();
+                    }
+                    try (PreparedStatement rtps = conn.prepareStatement(
+                        "INSERT INTO General_tickets (tid, section_name, venue_name) VALUES (?, ?, ?) "
+                    )) {
+                        rtps.setInt(1, tid);
+                        rtps.setString(2, section);
+                        rtps.setString(3, venue);
+                        rtps.executeUpdate();
+                        System.out.println("Ticket booked successfully.");
+                        i++;
+                    }
+                }
+                else {
+                    System.out.print("Invalid choice.\n");
+                }
+            }
+            conn.commit();
+        }
+        catch (SQLException e) {
             conn.rollback();
             throw e;
         }
