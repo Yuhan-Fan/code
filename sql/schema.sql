@@ -33,7 +33,8 @@ CREATE TABLE Users (
     name           VARCHAR(255)     NOT NULL,
     address        VARCHAR(255)     NOT NULL,
     email          VARCHAR(255)     NOT NULL,
-    date_of_birth DATE              NOT NULL
+    date_of_birth  DATE             NOT NULL,
+    deleted        BOOLEAN          NOT NULL DEFAULT false
 );
 
 CREATE TABLE Segments (
@@ -64,7 +65,7 @@ CREATE TABLE Venues (
     name           VARCHAR(255)     PRIMARY KEY,
     latitude       DECIMAL(9, 6)    NOT NULL,
     longitude      DECIMAL(9, 6)    NOT NULL,
-    postal_code    VARCHAR(6)      NOT NULL,
+    postal_code    VARCHAR(6)       NOT NULL,
     city           VARCHAR(255)     NOT NULL,
     country        VARCHAR(255)     NOT NULL
 );
@@ -84,7 +85,7 @@ CREATE TABLE Events (
 CREATE TABLE Performances (
     pid            INT              AUTO_INCREMENT PRIMARY KEY,
     eid            INT              NOT NULL,
-    cancelled      BOOLEAN          NOT NULL DEFAULT FALSE,
+    cancel_datetime DATETIME        DEFAULT NULL,
     datetime       DATETIME         NOT NULL,
     venue_name     VARCHAR(255)     NOT NULL,
     FOREIGN KEY (eid) REFERENCES Events(eid)
@@ -147,7 +148,7 @@ CREATE TABLE Seats (
 );
 
 CREATE TABLE Orders (
-    oid            INT              PRIMARY KEY,
+    oid            INT              AUTO_INCREMENT PRIMARY KEY,
     uid            INT              NOT NULL,
     pid            INT              NOT NULL,
     datetime       DATETIME         NOT NULL,
@@ -160,7 +161,7 @@ CREATE TABLE Orders (
 CREATE TABLE Tickets (
     tid            INT              AUTO_INCREMENT PRIMARY KEY,
     face_value     DECIMAL(10, 2)   NOT NULL,
-    cancel_datetime DATETIME,
+    cancel_datetime DATETIME        DEFAULT NULL,
     oid            INT              NOT NULL,
     FOREIGN KEY (oid) REFERENCES Orders(oid)
         ON UPDATE CASCADE
@@ -191,7 +192,7 @@ CREATE TABLE General_tickets (
 CREATE TABLE Feature (
     aid            INT              NOT NULL,
     eid            INT              NOT NULL,
-    billing_order  VARCHAR(255)     NOT NULL,
+    billing_order  INT              NOT NULL,
     PRIMARY KEY (aid, eid),
     FOREIGN KEY (aid) REFERENCES Artists(aid)
         ON UPDATE CASCADE,
@@ -239,9 +240,9 @@ CREATE TABLE Listings (
     seller_id      INT              NOT NULL,
     list_datetime  DATETIME         NOT NULL,
     price          DECIMAL(10, 2)   NOT NULL,
-    withdraw_datetime DATETIME,
-    buyer_id       INT,
-    trans_datetime DATETIME,
+    withdraw_datetime DATETIME      DEFAULT NULL,
+    buyer_id       INT              DEFAULT NULL,
+    trans_datetime DATETIME         DEFAULT NULL,
     FOREIGN KEY (tid) REFERENCES Tickets(tid)
         ON UPDATE CASCADE,
     FOREIGN KEY (seller_id) REFERENCES Customers(uid)

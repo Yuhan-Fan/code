@@ -57,7 +57,10 @@ public class Mytix {
     }
 
     private static boolean helper_organizer_exists(Connection conn, int uid) throws SQLException {
-        try (PreparedStatement stmt = conn.prepareStatement("SELECT COUNT(*) FROM Organizers WHERE uid = ?")) {
+        try (PreparedStatement stmt = conn.prepareStatement(
+            "SELECT COUNT(*) " +
+            "FROM Organizers JOIN Users ON Organizers.uid = Users.uid " +
+            "WHERE Organizers.uid = ? AND Users.deleted = false")) {
             stmt.setInt(1, uid);
 
             ResultSet rs = stmt.executeQuery();
@@ -67,7 +70,10 @@ public class Mytix {
     }
 
     private static boolean helper_customer_exists(Connection conn, int uid) throws SQLException {
-        try (PreparedStatement stmt = conn.prepareStatement("SELECT COUNT(*) FROM Customers WHERE uid = ?")) {
+        try (PreparedStatement stmt = conn.prepareStatement(
+            "SELECT COUNT(*) " +
+            "FROM Customers JOIN Users ON Customers.uid = Users.uid " +
+            "WHERE Customers.uid = ? AND Users.deleted = false")) {
             stmt.setInt(1, uid);
 
             ResultSet rs = stmt.executeQuery();
@@ -98,7 +104,7 @@ public class Mytix {
     }
 
     private static boolean helper_performance_exists_witheid(Connection conn, int pid, int eid) throws SQLException {
-        try (PreparedStatement stmt = conn.prepareStatement("SELECT COUNT(*) FROM Performances WHERE pid = ? AND eid = ?")) {
+        try (PreparedStatement stmt = conn.prepareStatement("SELECT COUNT(*) FROM Performances WHERE pid = ? AND eid = ? and cancel_datetime IS NULL")) {
             stmt.setInt(1, pid);
             stmt.setInt(2, eid);
 
@@ -109,7 +115,7 @@ public class Mytix {
     }
 
     private static boolean helper_performance_exists(Connection conn, int pid) throws SQLException {
-        try (PreparedStatement stmt = conn.prepareStatement("SELECT COUNT(*) FROM Performances WHERE pid = ? and cancelled = false")) {
+        try (PreparedStatement stmt = conn.prepareStatement("SELECT COUNT(*) FROM Performances WHERE pid = ? and cancel_datetime IS NULL")) {
             stmt.setInt(1, pid);
 
             ResultSet rs = stmt.executeQuery();
@@ -170,7 +176,7 @@ public class Mytix {
                 "SELECT COUNT(*) " +
                 "FROM Tickets JOIN Orders ON Tickets.oid = Orders.oid " +
                 "             JOIN Reserved_tickets ON Tickets.tid = Reserved_tickets.tid " +
-                "WHERE Orders.pid = ? AND Tickets.cancelled = false AND Reserved_tickets.seat = ? " +
+                "WHERE Orders.pid = ? AND Tickets.cancel_datetime IS NULL AND Reserved_tickets.seat = ? " +
                 "                     AND Reserved_tickets.row = ? AND Reserved_tickets.section_name = ?")) {
             stmt.setInt(1, pid);
             stmt.setInt(2, seat);
@@ -206,7 +212,7 @@ public class Mytix {
             "SELECT General_sections.total_capacity - COUNT(General_tickets.tid) AS available " +
             "FROM General_sections JOIN Performances ON General_sections.venue_name = Performances.venue_name " +
             "                      LEFT JOIN Orders ON Orders.pid = Performances.pid " +
-            "                      LEFT JOIN Tickets ON Tickets.oid = Orders.oid AND Tickets.cancelled = false " +
+            "                      LEFT JOIN Tickets ON Tickets.oid = Orders.oid AND Tickets.cancel_datetime IS NULL " +
             "                      LEFT JOIN General_tickets ON General_tickets.tid = Tickets.tid " +
             "                                                AND General_tickets.section_name = General_sections.name " +
             "WHERE Performances.pid = ? " +
@@ -222,16 +228,190 @@ public class Mytix {
         }
     }
 
+    private static boolean helper_reserved_ticket_can_cancel(Connection conn, int tid, int uid) throws SQLException {
+
+        try (PreparedStatement ps = conn.prepareStatement(
+        "SELECT COUNT(*) " +
+        "FROM Tickets JOIN Orders ON Tickets.oid = Orders.oid " +
+        "             JOIN Reserved_tickets ON Tickets.tid = Reserved_tickets.tid " +
+        "             JOIN Performances ON Orders.pid = Performances.pid " +
+        "WHERE Tickets.tid = ? " +
+        "  AND Orders.uid = ? " +
+        "  AND Tickets.cancel_datetime IS NULL AND Performances.datetime >= CURRENT_TIMESTAMP + INTERVAL 7 DAY" +
+        "  AND NOT EXISTS (SELECT * " +
+        "                  FROM Listings " +
+        "                  WHERE Listings.tid = Tickets.tid AND Listings.seller_id = ? AND Listings.withdraw_datetime IS NULL)"
+        )) {
+            ps.setInt(1, tid);
+            ps.setInt(2, uid);
+            ps.setInt(3, uid);
+
+            ResultSet rs = ps.executeQuery();
+            rs.next();
+            return rs.getInt(1) > 0;
+        }
+    }
+
+    private static boolean helper_general_ticket_can_cancel(Connection conn, int tid, int uid) throws SQLException {
+
+        try (PreparedStatement ps = conn.prepareStatement(
+        "SELECT COUNT(*) " +
+        "FROM Tickets JOIN Orders ON Tickets.oid = Orders.oid " +
+        "             JOIN General_tickets ON Tickets.tid = General_tickets.tid " +
+        "             JOIN Performances ON Orders.pid = Performances.pid " +
+        "WHERE Tickets.tid = ? " +
+        "  AND Orders.uid = ? " +
+        "  AND Tickets.cancel_datetime IS NULL AND Performances.datetime >= CURRENT_TIMESTAMP + INTERVAL 7 DAY" +
+        "  AND NOT EXISTS (SELECT * " +
+        "                  FROM Listings " +
+        "                  WHERE Listings.tid = Tickets.tid AND Listings.seller_id = ? AND Listings.withdraw_datetime IS NULL)"
+        )) {
+            ps.setInt(1, tid);
+            ps.setInt(2, uid);
+            ps.setInt(3, uid);
+
+            ResultSet rs = ps.executeQuery();
+            rs.next();
+            return rs.getInt(1) > 0;
+        }
+    }
+
+    private static boolean helper_reserved_ticket_can_list(Connection conn, int tid, int uid) throws SQLException {
+
+        try (PreparedStatement ps = conn.prepareStatement(
+            "SELECT COUNT(*) " +
+            "FROM Tickets JOIN Orders ON Tickets.oid = Orders.oid " +
+            "             JOIN Reserved_tickets ON Tickets.tid = Reserved_tickets.tid " +
+            "             JOIN Performances ON Orders.pid = Performances.pid " +
+            "WHERE Tickets.tid = ? " +
+            "  AND Performances.datetime >= CURRENT_TIMESTAMP " +
+            "  AND (Orders.uid = ? OR EXISTS (SELECT * " + // The user either bought it from system or a listing of another user.
+            "                                 FROM Listings " +
+            "                                 WHERE Listings.tid = Tickets.tid AND Listings.buyer_id = ?)) " +
+            "  AND Tickets.cancel_datetime IS NULL " + // The ticket is not cancelled.
+            "  AND NOT EXISTS (SELECT * " + // The user hasn't listed the ticket, or if he listed it, he has withdrawn.
+            "                  FROM Listings " +
+            "                  WHERE Listings.tid = Tickets.tid AND Listings.seller_id = ? AND Listings.withdraw_datetime IS NULL)"
+        )) {
+            ps.setInt(1, tid);
+            ps.setInt(2, uid);
+            ps.setInt(3, uid);
+            ps.setInt(4, uid);
+
+            ResultSet rs = ps.executeQuery();
+            rs.next();
+            return rs.getInt(1) > 0;
+        }
+    }
+
+    private static boolean helper_general_ticket_can_list(Connection conn, int tid, int uid) throws SQLException {
+        try (PreparedStatement ps = conn.prepareStatement(
+            "SELECT COUNT(*) " +
+            "FROM Orders JOIN Tickets on Orders.oid = Tickets.oid " +
+            "            JOIN Performances ON Orders.pid = Performances.pid " +
+            "            JOIN Events ON Performances.eid = Events.eid " +
+            "            JOIN General_tickets ON Tickets.tid = General_tickets.tid " +
+            "WHERE Tickets.tid = ? " +
+            "  AND Performances.datetime >= CURRENT_TIMESTAMP " +
+            "  AND (Orders.uid = ? OR EXISTS (SELECT * " + // The user either bought it from system or a listing of another user.
+            "                                 FROM Listings " +
+            "                                 WHERE Listings.tid = Tickets.tid AND Listings.buyer_id = ?)) " +
+            "  AND Tickets.cancel_datetime IS NULL " + // The ticket is not cancelled.
+            "  AND NOT EXISTS (SELECT * " + // The user hasn't listed the ticket, or if he listed it, he has withdrawn.
+            "                  FROM Listings " +
+            "                  WHERE Listings.tid = Tickets.tid AND Listings.seller_id = ? AND Listings.withdraw_datetime IS NULL)"
+        )) {
+            ps.setInt(1, tid);
+            ps.setInt(2, uid);
+            ps.setInt(3, uid);
+            ps.setInt(4, uid);
+
+            ResultSet rs = ps.executeQuery();
+            rs.next();
+            return rs.getInt(1) > 0;
+        }
+    }
+
+    private static BigDecimal helper_highest_resale_price(Connection conn, int tid) throws SQLException {
+        try (PreparedStatement ps = conn.prepareStatement(
+        "SELECT Tickets.face_value, Events.resale_cap " +
+        "FROM Tickets JOIN Orders ON Tickets.oid = Orders.oid " +
+        "             JOIN Performances ON Orders.pid = Performances.pid " +
+        "             JOIN Events ON Performances.eid = Events.eid " +
+        "WHERE Tickets.tid = ?"
+        )) {
+            ps.setInt(1, tid);
+
+            ResultSet rs = ps.executeQuery();
+            rs.next();
+            BigDecimal face_value = rs.getBigDecimal("face_value");
+            BigDecimal resale_cap = rs.getBigDecimal("resale_cap");
+            return face_value.multiply(resale_cap).divide(new BigDecimal("100")).setScale(2, java.math.RoundingMode.HALF_UP);
+        }
+    }
+
+    private static boolean helper_listing_can_withdraw(Connection conn, int lid, int uid) throws SQLException {
+        try (PreparedStatement ps = conn.prepareStatement(
+            "SELECT * " +
+            "FROM Listings " +
+            "WHERE Listings.lid = ? AND Listings.seller_id = ? " +
+            "  AND Listings.buyer_id IS NULL " +
+            "  AND Listings.withdraw_datetime IS NULL "
+        )) {
+            ps.setInt(1, lid);
+            ps.setInt(2, uid);
+
+            try (ResultSet rs = ps.executeQuery()) {
+                return rs.next();
+            }
+        }
+    }
+
+    private static boolean helper_performance_reviewable(Connection conn, int pid, int uid) throws SQLException {
+        try (PreparedStatement stmt = conn.prepareStatement(
+            "SELECT DISTINCT Performances.pid, Events.name " +
+            "FROM Tickets JOIN Orders ON Tickets.oid = Orders.oid " +
+            "             JOIN Performances ON Orders.pid = Performances.pid " +
+            "             JOIN Events ON Performances.eid = Events.eid " +
+            "WHERE Performances.pid = ? " +
+            "  AND Performances.datetime <= CURRENT_TIMESTAMP " +
+            "  AND Performances.datetime >= CURRENT_TIMESTAMP - INTERVAL 1 MONTH " +
+            "  AND (Orders.uid = ? OR EXISTS (SELECT * " + // The user either bought it from system or a listing of another user.
+            "                                 FROM Listings " +
+            "                                 WHERE Listings.tid = Tickets.tid AND Listings.buyer_id = ?)) " +
+            "  AND Tickets.cancel_datetime IS NULL " + // The ticket is not cancelled.
+            "  AND NOT EXISTS (SELECT * " + // The user hasn't listed the ticket, or if he listed it, he has withdrawn.
+            "                  FROM Listings " +
+            "                  WHERE Listings.tid = Tickets.tid AND Listings.seller_id = ? AND Listings.withdraw_datetime IS NULL)")) {
+
+            stmt.setInt(1, pid);
+            stmt.setInt(2, uid);
+            stmt.setInt(3, uid);
+            stmt.setInt(4, uid);
+
+            try (ResultSet rs = stmt.executeQuery()) {
+                return rs.next();
+            }
+        }
+    }
+
     private static void print_operations_options () {
-        System.out.print("1. Create a profile.\n");
-        System.out.print("2. Delete a profile.\n");
-        System.out.print("3. Create an event.\n");
-        System.out.print("4. Create a performance.\n");
-        System.out.print("5. Define pricetiers and assign to sections.\n");
-        System.out.print("6. Set resale cap of an event.\n");
-        System.out.print("7. Update price tier price.\n");
-        System.out.print("8. Block or unblock seat.\n");
-        System.out.print("9. Book tickets.\n");
+        System.out.print("1 Create a profile.\n");
+        System.out.print("2 Delete a profile.\n");
+        System.out.print("3 Create an event.\n");
+        System.out.print("4 Create a performance.\n");
+        System.out.print("5 Define pricetiers and assign to sections.\n");
+        System.out.print("6 Set resale cap of an event.\n");
+        System.out.print("7 Update price tier price.\n");
+        System.out.print("8 Block or unblock seat.\n");
+        System.out.print("9 Book tickets.\n");
+        System.out.print("10 Cancel performance.\n");
+        System.out.print("11 Cancel.ticket.\n");
+        System.out.print("12 List ticket.\n");
+        System.out.print("13 Withdraw listing.\n");
+        System.out.print("14 Purchase listing of another customer.\n");
+        System.out.print("15 Review performance.\n");
+        System.out.print("Choose by entering a number.\n");
     }
 
     private static void operations (Connection conn, Scanner scanner) throws SQLException {
@@ -256,17 +436,27 @@ public class Mytix {
             o8_block_or_unblock_seat(conn, scanner);
         else if (choice.equals("9"))
             o9_book_ticket(conn, scanner);
+        else if (choice.equals("10"))
+            o10_cancel_performance(conn, scanner);
+        else if (choice.equals("11"))
+            o11_cancel_ticket(conn, scanner);
+        else if (choice.equals("12"))
+            o12_list_ticket(conn, scanner);
+        else if (choice.equals("13"))
+            o13_withdraw_listing(conn, scanner);
+        else if (choice.equals("15"))
+            o15_review_performance(conn, scanner);
         else
             System.out.println("Invalid choice.\n");
     }
 
     private static void print_queries_options () {
-        System.out.print("1. Search for upcoming performances by latitude & longitude.\n");
-        System.out.print("2. Search for upcoming performances by postal code.\n");
-        System.out.print("3. Search for upcoming performances by address.\n");
-        System.out.print("4. Search for upcoming performances by date range & available ticket number.\n");
-        System.out.print("5. Search by filters.\n");
-        System.out.print("6. Seat summary of a performance.\n");
+        System.out.print("1 Search for upcoming performances by latitude & longitude.\n");
+        System.out.print("2 Search for upcoming performances by postal code.\n");
+        System.out.print("3 Search for upcoming performances by address.\n");
+        System.out.print("4 Search for upcoming performances by date range & available ticket number.\n");
+        System.out.print("5 Search by filters.\n");
+        System.out.print("6 Seat summary of a performance.\n");
         System.out.print("Choose by entering a number.\n");
     }
 
@@ -293,12 +483,72 @@ public class Mytix {
     }
 
     private static void print_reports_options () {
-        System.out.print("");
+        System.out.print("1.1 Rank number of tickets sold & gross revenue by city.\n");
+        System.out.print("1.2                                             by venue within a city.\n");
+        System.out.print("2.1 Report number of events & performances by segment and genre.\n");
+        System.out.print("2.2                                        by country.\n");
+        System.out.print("2.3                                        by country and city.\n");
+        System.out.print("2.4                                        by country, city and venue.\n");
+        System.out.print("3.1 Rank organizers by overall revenue.\n");
+        System.out.print("3.2                 by country revenue.\n");
+        System.out.print("3.3                 by country, city revenue.\n");
+        System.out.print("4   Report ticket scalpers.\n");
+        System.out.print("5.1 Rank customers by number of orders.\n");
+        System.out.print("5.2                by number of orders per city.\n");
+        System.out.print("6.1 Rank customers by number of tickets cancelled.\n");
+        System.out.print("6.2 Rank organizers by number of performances cancelled.\n");
+        System.out.print("7   Report performance sell-through rates.\n");
+        System.out.print("8.1 Report event number of completed resales.\n");
+        System.out.print("8.2              average markup over face value.\n");
+        System.out.print("8.3              fraction of listings priced exactly at the cap.\n");
+        System.out.print("8.4 Report top 10 events by resale volume in a given period.\n");
+        System.out.print("Choose by entering a choice, e.g. 1.1\n");
     }
 
-    private static void reports (Connection conn, Scanner scanner) {
+    private static void reports (Connection conn, Scanner scanner) throws SQLException {
         print_reports_options ();
         String choice = scanner.nextLine();
+
+        if (choice.equals("1.1"))
+            r1_1_city_ticket_or_revenue_rank(conn, scanner);
+        else if (choice.equals("1.2"))
+            r1_2_venue_ticket_or_revenue_rank(conn, scanner);
+        else if (choice.equals("2.1"))
+            r2_1_genre_report(conn, scanner);
+        else if (choice.equals("2.2"))
+            r2_2_country_report(conn, scanner);
+        else if (choice.equals("2.3"))
+            r2_3_country_city_report(conn, scanner);
+        else if (choice.equals("2.4"))
+            r2_4_country_city_venue_report(conn, scanner);
+        else if (choice.equals("3.1"))
+            r3_1_organizer_overall_revenue_rank(conn, scanner);
+        else if (choice.equals("3.2"))
+            r3_2_organizer_country_revenue_rank(conn, scanner);
+        else if (choice.equals("3.3"))
+            r3_3_organizer_country_city_revenue_rank(conn, scanner);
+        else if (choice.equals("4"))
+            r4_ticket_scalpers_eport(conn, scanner);
+        else if (choice.equals("5.1"))
+            r5_1_customer_order_rank(conn, scanner);
+        else if (choice.equals("5.2"))
+            r5_2_customer_order_city_rank(conn, scanner);
+        else if (choice.equals("6.1"))
+            r6_1_customer_cancel_ticket_rank(conn, scanner);
+        else if (choice.equals("6.2"))
+            r6_2_organizer_cancel_performance_rank(conn, scanner);
+        else if (choice.equals("7"))
+            r7_performance_sell_through_rate(conn, scanner);
+        else if (choice.equals("8.1"))
+            r8_1_resales_report_completed_resale(conn, scanner);
+        else if (choice.equals("8.2"))
+            r8_2_resales_report_average_markup(conn, scanner);
+        else if (choice.equals("8.3"))
+            r8_3_resales_report_fraction(conn, scanner);
+        else if (choice.equals("8.4"))
+            r8_4_resales_report_top_10(conn, scanner);
+        else
+            System.out.println("Invalid choice.\n");
     }
 
     private static void o1_create_profile(Connection conn, Scanner scanner) throws SQLException {
@@ -366,6 +616,7 @@ public class Mytix {
             }
             else {
                 System.out.print("Invalid choice.\n");
+                conn.rollback();
                 return;
             }
 
@@ -385,23 +636,22 @@ public class Mytix {
         System.out.print("Enter your UID:\n");
         int uid = Integer.parseInt(scanner.nextLine());
 
-        conn.setAutoCommit(false);
-
         try {
-            PreparedStatement customerps = conn.prepareStatement(
-                "DELETE FROM Customers WHERE uid = ?"
-            );
-            customerps.setInt(1, uid);
-            customerps.executeUpdate();
+            conn.setAutoCommit(false);
 
-            PreparedStatement organizerps = conn.prepareStatement(
-                "DELETE FROM Organizers WHERE uid = ?"
-            );
-            organizerps.setInt(1, uid);
-            organizerps.executeUpdate();
-
+            try (PreparedStatement listingps = conn.prepareStatement(
+                "UPDATE Listings " +
+                "SET withdraw_datetime = CURRENT_TIMESTAMP " +
+                "WHERE seller_id = ? " +
+                "  AND buyer_id IS NULL " +
+                "  AND withdraw_datetime IS NULL")) {
+            listingps.setInt(1, uid);
+            listingps.executeUpdate();
+        }
             PreparedStatement userps = conn.prepareStatement(
-                "DELETE FROM Users WHERE uid = ?"
+                "UPDATE Users " +
+                "SET deleted = true " +
+                "WHERE uid = ? AND deleted = false"
             );
             userps.setInt(1, uid);
 
@@ -468,11 +718,54 @@ public class Mytix {
                 eid = keys.getInt(1);
                 keys.close();
 
+                System.out.print("Here are all the artist:\n");
+                try (Statement stmt = conn.createStatement();
+                ResultSet rs = stmt.executeQuery(
+                    "SELECT * " +
+                    "FROM Artists "
+                )) {
+
+                System.out.printf(
+                    "%-10s %-30s%n",
+                    "AID", "Artist name"
+                );
+                System.out.println("-".repeat(40));
+
+                while (rs.next()) {
+                    System.out.printf(
+                        "%-10s %-30s %n",
+                        rs.getInt("aid"),
+                        rs.getString("name")
+                    );
+                }
+            }
+
+                System.out.print("How many artists are you planning to have?\n");
+                int a = Integer.parseInt(scanner.nextLine());
+                if (a < 1) {
+                    throw new SQLException("There should be at least 1 artist.");
+                }
+                int aid;
+
+                for (int i=1; i<=a; i++) {
+                    System.out.printf("Enter AID for the number %d artist:\n", i);
+                    aid = Integer.parseInt(scanner.nextLine());
+
+                    try (PreparedStatement aps = conn.prepareStatement(
+                        "INSERT INTO Feature (aid, eid, billing_order) VALUES (?, ?, ?)"
+                    )) {
+                        aps.setInt(1, aid);
+                        aps.setInt(2, eid);
+                        aps.setInt(3, i);
+                        aps.executeUpdate();
+                    }
+                }
+
                 conn.commit();
                 System.out.printf("Your event is created. EID: %d\n", eid);
             }
         }
-        catch (SQLException e) {
+        catch (SQLException e | RuntimeException e) {
             conn.rollback();
             throw e;
         }
@@ -542,7 +835,7 @@ public class Mytix {
         try {
             int pid;
             PreparedStatement ps = conn.prepareStatement(
-                "INSERT INTO Performances (cancelled, datetime, eid, venue_name) VALUES (false, ?, ?, ?)",
+                "INSERT INTO Performances (datetime, eid, venue_name) VALUES (?, ?, ?)",
                 Statement.RETURN_GENERATED_KEYS
             );
 
@@ -616,7 +909,7 @@ public class Mytix {
         try (PreparedStatement performanceps = conn.prepareStatement(
                 "SELECT pid, datetime, venue_name " +
                 "FROM Performances " +
-                "WHERE eid = ?")) {
+                "WHERE eid = ? AND cancel_datetime IS NULL")) {
             performanceps.setInt(1, eid);
 
             try (ResultSet rs = performanceps.executeQuery()) {
@@ -741,8 +1034,8 @@ public class Mytix {
                     "WHERE venue_name = ?");
                  PreparedStatement insertps = conn.prepareStatement(
                     "INSERT INTO Section_pricetier " +
-                    "(section_name, venue_name, pid, pricetier_name) " +
-                    "VALUES (?, ?, ?, ?)")) {
+                    "(section_name, pid, pricetier_name) " +
+                    "VALUES (?, ?, ?)")) {
 
                 sectionps.setString(1, venueName);
 
@@ -760,9 +1053,8 @@ public class Mytix {
                         }
 
                         insertps.setString(1, sectionName);
-                        insertps.setString(2, venueName);
-                        insertps.setInt(3, pid);
-                        insertps.setString(4, pricetierName);
+                        insertps.setInt(2, pid);
+                        insertps.setString(3, pricetierName);
                         insertps.executeUpdate();
                     }
                 }
@@ -884,7 +1176,7 @@ public class Mytix {
         try (PreparedStatement performances = conn.prepareStatement(
                 "SELECT pid, datetime, venue_name " +
                 "FROM Performances " +
-                "WHERE eid = ?")) {
+                "WHERE eid = ?  AND cancel_datetime IS NULL")) {
             performances.setInt(1, eid);
 
             try (ResultSet rs = performances.executeQuery()) {
@@ -952,7 +1244,7 @@ public class Mytix {
             "                 JOIN Tickets ON Reserved_tickets.tid = Tickets.tid " +
             "                 JOIN Orders ON Tickets.oid = Orders.oid " +
             "                             AND Orders.pid = Price_tiers.pid " +
-            "WHERE Price_tiers.name = ? AND Price_tiers.pid = ? AND Tickets.cancelled = false"
+            "WHERE Price_tiers.name = ? AND Price_tiers.pid = ? AND Tickets.cancel_datetime IS NULL"
         )) {
             pricetier1ps.setString(1, name);
             pricetier1ps.setInt(2, pid);
@@ -973,7 +1265,7 @@ public class Mytix {
             "                 JOIN Tickets ON General_tickets.tid = Tickets.tid " +
             "                 JOIN Orders ON Tickets.oid = Orders.oid " +
             "                             AND Orders.pid = Price_tiers.pid " +
-            "WHERE Price_tiers.name = ? AND Price_tiers.pid = ? AND Tickets.cancelled = false"
+            "WHERE Price_tiers.name = ? AND Price_tiers.pid = ? AND Tickets.cancel_datetime IS NULL"
         )) {
             pricetier2ps.setString(1, name);
             pricetier2ps.setInt(2, pid);
@@ -1053,7 +1345,7 @@ public class Mytix {
         try (PreparedStatement performances = conn.prepareStatement(
                 "SELECT pid, datetime, venue_name " +
                 "FROM Performances " +
-                "WHERE eid = ?")) {
+                "WHERE eid = ? AND cancel_datetime IS NULL")) {
             performances.setInt(1, eid);
 
             try (ResultSet rs = performances.executeQuery()) {
@@ -1248,12 +1540,12 @@ public class Mytix {
                     }
                     int tid;
                     try (PreparedStatement tps = conn.prepareStatement(
-                        "INSERT INTO Tickets (face_value, cancelled, oid) VALUES (" +
+                        "INSERT INTO Tickets (face_value, oid) VALUES (" +
                         "(SELECT Price_tiers.price " +
                         "FROM Section_pricetier JOIN Price_tiers ON Section_pricetier.pricetier_name = Price_tiers.name" +
                         "                                        AND Section_pricetier.pid = Price_tiers.pid " +
                         "WHERE Section_pricetier.section_name = ? AND Section_pricetier.pid = ?), " +
-                        "false, ?)",
+                        "?)",
                         Statement.RETURN_GENERATED_KEYS
                     )) {
                         tps.setString(1, section);
@@ -1292,12 +1584,12 @@ public class Mytix {
                     }
                     int tid;
                     try (PreparedStatement tps = conn.prepareStatement(
-                        "INSERT INTO Tickets (face_value, cancelled, oid) VALUES (" +
+                        "INSERT INTO Tickets (face_value, oid) VALUES (" +
                         "(SELECT Price_tiers.price " +
                         "FROM Section_pricetier JOIN Price_tiers ON Section_pricetier.pricetier_name = Price_tiers.name" +
                         "                                        AND Section_pricetier.pid = Price_tiers.pid " +
                         "WHERE Section_pricetier.section_name = ? AND Section_pricetier.pid = ?), " +
-                        "false, ?)",
+                        "?)",
                         Statement.RETURN_GENERATED_KEYS
                     )) {
                         tps.setString(1, section);
@@ -1336,6 +1628,513 @@ public class Mytix {
         }
     }
 
+    private static void o10_cancel_performance(Connection conn, Scanner scanner) throws SQLException {
+         System.out.print("Enter your UID:\n");
+        int uid = Integer.parseInt(scanner.nextLine());
+
+        if (!helper_organizer_exists(conn, uid)) {
+            System.out.print("Invalid UID.\n");
+            return;
+        }
+
+        System.out.print("Here are the events you have created:\n");
+
+        try (PreparedStatement eventps = conn.prepareStatement(
+                "SELECT eid, name " +
+                "FROM Events " +
+                "WHERE uid = ?")) {
+            eventps.setInt(1, uid);
+
+            try (ResultSet rs = eventps.executeQuery()) {
+                System.out.printf(
+                        "%-10s %-30s%n",
+                        "EID", "Event name");
+                System.out.println("-".repeat(40));
+
+                while (rs.next()) {
+                    System.out.printf(
+                            "%-10d %-30s%n",
+                            rs.getInt("eid"),
+                            rs.getString("name"));
+                }
+            }
+        }
+
+        System.out.print("Enter EID:\n");
+        int eid = Integer.parseInt(scanner.nextLine());
+
+        if (!helper_event_exists(conn, eid, uid)) {
+            System.out.print("Invalid EID.\n");
+            return;
+        }
+
+        System.out.print(
+                "Here are the performances of this event:\n");
+
+        try (PreparedStatement performances = conn.prepareStatement(
+                "SELECT pid, datetime, venue_name " +
+                "FROM Performances " +
+                "WHERE eid = ?  AND cancel_datetime IS NULL")) {
+            performances.setInt(1, eid);
+
+            try (ResultSet rs = performances.executeQuery()) {
+                System.out.printf(
+                        "%-10s %-25s %-30s%n",
+                        "PID", "Datetime", "Venue");
+                System.out.println("-".repeat(65));
+
+                while (rs.next()) {
+                    System.out.printf(
+                            "%-10d %-25s %-30s%n",
+                            rs.getInt("pid"),
+                            rs.getString("datetime"),
+                            rs.getString("venue_name"));
+                }
+            }
+        }
+
+        System.out.print("Which performance are you going to cancel? Enter PID:\n");
+        int pid = Integer.parseInt(scanner.nextLine());
+        if (!helper_performance_exists_witheid(conn, pid, eid)) {
+            System.out.print("Invalid PID.\n");
+            return;
+        }
+
+        try {
+            conn.setAutoCommit(false);
+
+            try (PreparedStatement ps = conn.prepareStatement(
+            "UPDATE Performances " +
+            "SET cancel_datetime = CURRENT_TIMESTAMP " +
+            "WHERE pid = ? and cancel_datetime IS NULL"
+            )) {
+                ps.setInt(1, pid);
+                ps.executeUpdate();
+            }
+
+            try (PreparedStatement tps = conn.prepareStatement(
+            "UPDATE Tickets " +
+            "JOIN Orders ON Tickets.oid = Orders.oid " +
+            "SET Tickets.cancel_datetime = CURRENT_TIMESTAMP " +
+            "WHERE Orders.pid = ? and Tickets.cancel_datetime IS NULL"
+            )) {
+                tps.setInt(1, pid);
+                tps.executeUpdate();
+                System.out.print("Performance cancelled successfully.\n");
+            }
+
+            conn.commit();
+        }
+        catch (SQLException e) {
+            conn.rollback();
+            throw e;
+        }
+        finally {
+            conn.setAutoCommit(true);
+        }
+    }
+
+    private static void o11_cancel_ticket(Connection conn, Scanner scanner) throws SQLException {
+        System.out.print("Enter your UID:\n");
+        int uid = Integer.parseInt(scanner.nextLine());
+        if (!helper_customer_exists(conn, uid)) {
+            System.out.print("You don't have an account yet.\n");
+            return;
+        }
+
+        System.out.print("Would you like to cancel a reserved ticket or general ticket? r/g\n");
+        String type = scanner.nextLine();
+        
+        if (type.equals("r")) {
+            System.out.print("Here are the reserved tickets you booked (that are still cancellable):\n");
+
+            try (PreparedStatement tps = conn.prepareStatement(
+                "SELECT Tickets.tid, Reserved_tickets.seat, Reserved_tickets.row, Reserved_tickets.section_name, Events.name AS event_name, Performances.pid " +
+                "FROM Orders JOIN Tickets on Orders.oid = Tickets.oid " +
+                "            JOIN Performances ON Orders.pid = Performances.pid " +
+                "            JOIN Events ON Performances.eid = Events.eid " +
+                "            JOIN Reserved_tickets ON Tickets.tid = Reserved_tickets.tid " +
+                "WHERE Orders.uid = ? AND Tickets.cancel_datetime IS NULL " + // The user bought the ticket from system, not listing.
+                                                                              // The user hasn't cancelled the ticket.
+                "  AND Performances.datetime >= CURRENT_TIMESTAMP + INTERVAL 7 DAY " + // 7 days before the performance
+                "  AND NOT EXISTS (SELECT * " + // The user hasn't listed the ticket, or if he listed, he has withdrawn.
+                "                  FROM Listings " +
+                "                  WHERE Listings.tid = Tickets.tid AND Listings.seller_id = ? AND Listings.withdraw_datetime IS NULL) " +
+                "ORDER BY Orders.datetime DESC"
+            )) {
+                tps.setInt(1, uid);
+                tps.setInt(2, uid);
+                try (ResultSet rs = tps.executeQuery()) {
+                    System.out.printf("%-8s %-25s %-8s %-12s %-8s %-8s%n",
+                                    "TID", "Event", "PID", "Section", "Row", "Seat");
+                    System.out.println("-".repeat(75));
+
+                    while (rs.next()) {
+                    System.out.printf("%-8d %-25s %-8d %-12s %-8d %-8d%n",
+                        rs.getInt("tid"),
+                        rs.getString("event_name"),
+                        rs.getInt("pid"),
+                        rs.getString("section_name"),
+                        rs.getInt("row"),
+                        rs.getInt("seat"));
+                    }
+                }
+            }
+
+            System.out.print("Which ticket are you going to cancel? Enter TID:\n");
+            int tid = Integer.parseInt(scanner.nextLine());
+            if (!helper_reserved_ticket_can_cancel(conn, tid, uid)) {
+                System.out.print("Invalid TID.\n");
+                return;
+            }
+
+            try (PreparedStatement ps = conn.prepareStatement(
+                "UPDATE Tickets " +
+                "SET cancel_datetime = CURRENT_TIMESTAMP " +
+                "WHERE Tickets.tid = ?"
+            )) {
+                ps.setInt(1, tid);
+                ps.executeUpdate();
+                System.out.print("Successfully cancelled ticket.\n");
+            }
+        }
+        else if (type.equals("g")) {
+            System.out.print("Here are the general tickets you booked (that are still cancellable):\n");
+
+            try (PreparedStatement tps = conn.prepareStatement(
+                "SELECT Tickets.tid, General_tickets.section_name, Events.name AS event_name, Performances.pid " +
+                "FROM Orders JOIN Tickets on Orders.oid = Tickets.oid " +
+                "            JOIN Performances ON Orders.pid = Performances.pid " +
+                "            JOIN Events ON Performances.eid = Events.eid " +
+                "            JOIN General_tickets ON Tickets.tid = General_tickets.tid " +
+                "WHERE Orders.uid = ? AND Tickets.cancel_datetime IS NULL " +
+                "  AND Performances.datetime >= CURRENT_TIMESTAMP + INTERVAL 7 DAY " +
+                "  AND NOT EXISTS (SELECT * " +
+                "                  FROM Listings " +
+                "                  WHERE Listings.tid = Tickets.tid AND Listings.seller_id = ? AND Listings.withdraw_datetime IS NULL) " +
+                "ORDER BY Orders.datetime DESC"
+            )) {
+                tps.setInt(1, uid);
+                tps.setInt(2, uid);
+                try (ResultSet rs = tps.executeQuery()) {
+                    System.out.printf("%-8s %-25s %-8s %-12s%n",
+                                    "TID", "Event", "PID", "Section");
+                    System.out.println("-".repeat(60));
+
+                    while (rs.next()) {
+                    System.out.printf("%-8d %-25s %-8d %-12s%n",
+                        rs.getInt("tid"),
+                        rs.getString("event_name"),
+                        rs.getInt("pid"),
+                        rs.getString("section_name"));
+                    }
+                }
+            }
+
+            System.out.print("Which ticket are you going to cancel? Enter TID:\n");
+            int tid = Integer.parseInt(scanner.nextLine());
+            if (!helper_general_ticket_can_cancel(conn, tid, uid)) {
+                System.out.print("Invalid TID.\n");
+                return;
+            }
+
+            try (PreparedStatement ps = conn.prepareStatement(
+                "UPDATE Tickets " +
+                "SET cancel_datetime = CURRENT_TIMESTAMP " +
+                "WHERE Tickets.tid = ?"
+            )) {
+                ps.setInt(1, tid);
+                ps.executeUpdate();
+                System.out.print("Successfully cancelled ticket.\n");
+            }
+        }
+        else {
+            System.out.print("Invalid choice.\n");
+        }
+    }
+
+    private static void o12_list_ticket(Connection conn, Scanner scanner) throws SQLException {
+        System.out.print("Enter your UID:\n");
+        int uid = Integer.parseInt(scanner.nextLine());
+        if (!helper_customer_exists(conn, uid)) {
+            System.out.print("You don't have an account yet.\n");
+            return;
+        }
+        
+        System.out.print("Would you like to list a reserved ticket or general ticket? r/g\n");
+        String type = scanner.nextLine();
+        
+        if (type.equals("r")) {
+            System.out.print("Here are the reserved tickets you booked:\n");
+
+            try (PreparedStatement tps = conn.prepareStatement(
+                "SELECT Tickets.tid, Reserved_tickets.seat, Reserved_tickets.row, Reserved_tickets.section_name, Events.name AS event_name, Performances.pid " +
+                "FROM Orders JOIN Tickets ON Orders.oid = Tickets.oid " +
+                "            JOIN Performances ON Orders.pid = Performances.pid " +
+                "            JOIN Events ON Performances.eid = Events.eid " +
+                "            JOIN Reserved_tickets ON Tickets.tid = Reserved_tickets.tid " +
+                "WHERE Performances.datetime >= CURRENT_TIMESTAMP " +
+                "  AND (Orders.uid = ? OR EXISTS (SELECT * " + // The user either bought it from system or a listing of another user.
+                "                                 FROM Listings " +
+                "                                 WHERE Listings.tid = Tickets.tid AND Listings.buyer_id = ?)) " +
+                "  AND Tickets.cancel_datetime IS NULL " + // The ticket is not cancelled.
+                "  AND NOT EXISTS (SELECT * " + // The user hasn't listed the ticket, or if he listed it, he has withdrawn.
+                "                  FROM Listings " +
+                "                  WHERE Listings.tid = Tickets.tid AND Listings.seller_id = ? AND Listings.withdraw_datetime IS NULL)" +
+                "ORDER BY Orders.datetime DESC"
+            )) {
+                tps.setInt(1, uid);
+                tps.setInt(2, uid);
+                tps.setInt(3, uid);
+                try (ResultSet rs = tps.executeQuery()) {
+                    System.out.printf("%-8s %-25s %-8s %-12s %-8s %-8s%n",
+                                    "TID", "Event", "PID", "Section", "Row", "Seat");
+                    System.out.println("-".repeat(75));
+
+                    while (rs.next()) {
+                    System.out.printf("%-8d %-25s %-8d %-12s %-8d %-8d%n",
+                        rs.getInt("tid"),
+                        rs.getString("event_name"),
+                        rs.getInt("pid"),
+                        rs.getString("section_name"),
+                        rs.getInt("row"),
+                        rs.getInt("seat"));
+                    }
+                }
+            }
+
+            System.out.print("Which ticket are you going to list? Enter TID:\n");
+            int tid = Integer.parseInt(scanner.nextLine());
+            if (!helper_reserved_ticket_can_list(conn, tid, uid)) {
+                System.out.print("Invalid TID.\n");
+                return;
+            }
+
+            BigDecimal max = helper_highest_resale_price(conn, tid);
+            System.out.printf("You can list it at a maximum price %s dollars. How much are you listing?\n", max);
+            BigDecimal price = new BigDecimal(scanner.nextLine());
+            if (price.compareTo(max) > 0) {
+                System.out.print("You are listing higher than the maximum price.\n");
+                return;
+            }
+
+            try (PreparedStatement ps = conn.prepareStatement(
+                "INSERT INTO Listings (tid, seller_id, list_datetime, price) VALUES (?, ?, CURRENT_TIMESTAMP, ?)"
+            )) {
+                ps.setInt(1, tid);
+                ps.setInt(2, uid);
+                ps.setBigDecimal(3, price);
+                ps.executeUpdate();
+                System.out.print("Successfully listed ticket.\n");
+            }
+        }
+        else if (type.equals("g")) {
+            System.out.print("Here are the general tickets you booked:\n");
+
+            try (PreparedStatement tps = conn.prepareStatement(
+                "SELECT Tickets.tid, General_tickets.section_name, Events.name AS event_name, Performances.pid " +
+                "FROM Orders JOIN Tickets on Orders.oid = Tickets.oid " +
+                "            JOIN Performances ON Orders.pid = Performances.pid " +
+                "            JOIN Events ON Performances.eid = Events.eid " +
+                "            JOIN General_tickets ON Tickets.tid = General_tickets.tid " +
+                "WHERE Performances.datetime >= CURRENT_TIMESTAMP " +
+                "  AND (Orders.uid = ? OR EXISTS (SELECT * " + // The user either bought it from system or a listing of another user.
+                "                                 FROM Listings " +
+                "                                 WHERE Listings.tid = Tickets.tid AND Listings.buyer_id = ?)) " +
+                "  AND Tickets.cancel_datetime IS NULL " + // The ticket is not cancelled.
+                "  AND NOT EXISTS (SELECT * " + // The user hasn't listed the ticket, or if he listed it, he has withdrawn.
+                "                  FROM Listings " +
+                "                  WHERE Listings.tid = Tickets.tid AND Listings.seller_id = ? AND Listings.withdraw_datetime IS NULL) " +
+                "ORDER BY Orders.datetime DESC"
+            )) {
+                tps.setInt(1, uid);
+                tps.setInt(2, uid);
+                tps.setInt(3, uid);
+                try (ResultSet rs = tps.executeQuery()) {
+                    System.out.printf("%-8s %-25s %-8s %-12s%n",
+                                    "TID", "Event", "PID", "Section");
+                    System.out.println("-".repeat(60));
+
+                    while (rs.next()) {
+                    System.out.printf("%-8d %-25s %-8d %-12s%n",
+                        rs.getInt("tid"),
+                        rs.getString("event_name"),
+                        rs.getInt("pid"),
+                        rs.getString("section_name"));
+                    }
+                }
+            }
+
+            System.out.print("Which ticket are you going to list? Enter TID:\n");
+            int tid = Integer.parseInt(scanner.nextLine());
+            if (!helper_general_ticket_can_list(conn, tid, uid)) {
+                System.out.print("Invalid TID.\n");
+                return;
+            }
+
+            BigDecimal max = helper_highest_resale_price(conn, tid);
+            System.out.printf("You can list it at a maximum price %s dollars. How much are you listing?\n", max);
+            BigDecimal price = new BigDecimal(scanner.nextLine());
+            if (price.compareTo(max) > 0) {
+                System.out.print("You are listing higher than the maximum price.\n");
+                return;
+            }
+
+            try (PreparedStatement ps = conn.prepareStatement(
+                "INSERT INTO Listings (tid, seller_id, list_datetime, price) VALUES (?, ?, CURRENT_TIMESTAMP, ?)"
+            )) {
+                ps.setInt(1, tid);
+                ps.setInt(2, uid);
+                ps.setBigDecimal(3, price);
+                ps.executeUpdate();
+                System.out.print("Successfully listed ticket.\n");
+            }
+        }
+        else {
+            System.out.print("Invalid choice.\n");
+        }
+    }
+
+    private static void o13_withdraw_listing(Connection conn, Scanner scanner) throws SQLException {
+        System.out.print("Enter your UID:\n");
+        int uid = Integer.parseInt(scanner.nextLine());
+        if (!helper_customer_exists(conn, uid)) {
+            System.out.print("You don't have an account yet.\n");
+            return;
+        }
+
+        System.out.print("Here are all your listings (that are withdrawable):\n");
+
+        try (PreparedStatement pps = conn.prepareStatement(
+            "SELECT Listings.lid, Listings.price, Listings.list_datetime, Events.name, Performances.pid " +
+            "FROM Listings JOIN Tickets ON Listings.tid = Tickets.tid " +
+            "              JOIN Orders ON Tickets.oid = Orders.oid " +
+            "              JOIN Performances ON Orders.pid = Performances.pid " +
+            "              JOIN Events ON Performances.eid = Events.eid " +
+            "WHERE Listings.seller_id = ? " +
+            "  AND Listings.buyer_id IS NULL " +
+            "  AND Listings.withdraw_datetime IS NULL " +
+            "ORDER BY Listings.list_datetime DESC"
+        )) {
+            pps.setInt(1, uid);
+
+            try (ResultSet rs = pps.executeQuery()) {
+                System.out.printf("%-10s %-20s %-20s %-20s %-10s%n",
+                    "LID", "List price", "List datetime", "Event name", "PID");
+                System.out.println("-".repeat(80));
+
+                while (rs.next()) {
+                System.out.printf("%-10d %-20s %-20s %-20s %-10d%n",
+                    rs.getInt("lid"),
+                    rs.getBigDecimal("price"),
+                    rs.getTimestamp("list_datetime"),
+                    rs.getString("name"),
+                    rs.getInt("pid"));
+                }
+            }
+        }
+
+        System.out.print("Which listing are you going to withdraw? Enter LID:\n");
+        int lid = Integer.parseInt(scanner.nextLine());
+        if (!helper_listing_can_withdraw(conn, lid, uid)) {
+            System.out.print("Invalid LID.\n");
+            return;
+        }
+
+        try (PreparedStatement ps = conn.prepareStatement(
+        "UPDATE Listings " +
+        "SET withdraw_datetime = CURRENT_TIMESTAMP " +
+        "WHERE lid = ? " +
+        "  AND seller_id = ? " +
+        "  AND buyer_id IS NULL " +
+        "  AND withdraw_datetime IS NULL"
+        )) {
+            ps.setInt(1, lid);
+            ps.setInt(2, uid);
+
+            int rows = ps.executeUpdate();
+
+            if (rows == 1)
+                System.out.print("Successfully withdrawn listing.\n");
+            else
+                System.out.print("Failed to withdraw listing.\n");
+        }
+    }
+
+    private static void o15_review_performance(Connection conn, Scanner scanner) throws SQLException {
+        System.out.print("Enter your UID:\n");
+        int uid = Integer.parseInt(scanner.nextLine());
+        if (!helper_customer_exists(conn, uid)) {
+            System.out.print("You don't have an account yet.\n");
+            return;
+        }
+
+        System.out.print("Here are the performances you attended in a month:\n");
+
+        try (PreparedStatement pps = conn.prepareStatement(
+            "SELECT DISTINCT Performances.pid, Events.name, Performances.datetime " +
+            "FROM Tickets JOIN Orders ON Tickets.oid = Orders.oid " +
+            "             JOIN Performances ON Orders.pid = Performances.pid " +
+            "             JOIN Events ON Performances.eid = Events.eid " +
+            "WHERE Performances.datetime <= CURRENT_TIMESTAMP " +
+            "  AND Performances.datetime >= CURRENT_TIMESTAMP - INTERVAL 1 MONTH " +
+            "  AND (Orders.uid = ? OR EXISTS (SELECT * " + // The user either bought it from system or a listing of another user.
+            "                                 FROM Listings " +
+            "                                 WHERE Listings.tid = Tickets.tid AND Listings.buyer_id = ?)) " +
+            "  AND Tickets.cancel_datetime IS NULL " + // The ticket is not cancelled.
+            "  AND NOT EXISTS (SELECT * " + // The user hasn't listed the ticket, or if he listed it, he has withdrawn.
+            "                  FROM Listings " +
+            "                  WHERE Listings.tid = Tickets.tid AND Listings.seller_id = ? AND Listings.withdraw_datetime IS NULL) " +
+            "ORDER BY Performances.datetime DESC"
+        )) {
+            pps.setInt(1, uid);
+            pps.setInt(2, uid);
+            pps.setInt(3, uid);
+
+            try (ResultSet rs = pps.executeQuery()) {
+                System.out.printf("%-8s %-25s %-20s%n",
+                    "PID", "Event name", "datetime");
+                System.out.println("-".repeat(55));
+
+                while (rs.next()) {
+                System.out.printf("%-8d %-25s %-20s%n",
+                    rs.getInt("pid"),
+                    rs.getString("name"),
+                    rs.getTimestamp("datetime"));
+                }
+            }
+        }
+
+        System.out.print("Which performance are you going to review? Enter PID:\n");
+        int pid = Integer.parseInt(scanner.nextLine());
+        if (!helper_performance_reviewable(conn, pid, uid)) {
+            System.out.print("Invalid PID.\n");
+            return;
+        }
+
+        System.out.print("Score the event: 1-5\n");
+        int event_score = Integer.parseInt(scanner.nextLine());
+        System.out.print("Score the venue: 1-5\n");
+        int venue_score = Integer.parseInt(scanner.nextLine());
+        System.out.print("Provide your comment on the performance:\n");
+        String comment = scanner.nextLine();
+
+        try (PreparedStatement ps = conn.prepareStatement(
+            "INSERT INTO Review (uid, pid, comment, event_score, venue_score) VALUES (?, ?, ?, ?, ?)"
+        )) {
+            ps.setInt(1, uid);
+            ps.setInt(2, pid);
+            ps.setString(3, comment);
+            ps.setInt(4, event_score);
+            ps.setInt(5, venue_score);
+            int rows = ps.executeUpdate();
+                    if (rows == 1)
+                        System.out.println("Review created successfully.");
+                    else
+                        System.out.println("You have reviewed this performance before.");
+        }
+    }
+
     private static void q1_search_performances_by_lat_lon(Connection conn, Scanner scanner) throws SQLException {
         System.out.print("Enter latitude:");
         String latStr = scanner.nextLine();
@@ -1363,6 +2162,7 @@ public class Mytix {
                 "                  JOIN Venues ON Performances.venue_name = Venues.name " +
                 "WHERE POWER(Venues.latitude - ?, 2) + POWER(Venues.longitude - ?, 2) <= POWER(?, 2) " +
                 "      AND Performances.datetime >= CURRENT_TIMESTAMP " +
+                "      AND Performances.cancel_datetime IS NULL " +
                 "ORDER BY POWER(Venues.latitude - ?, 2) + POWER(Venues.longitude - ?, 2) ";
             try (PreparedStatement ps = conn.prepareStatement(sql)) {
                 ps.setDouble(1, latitude);
@@ -1401,7 +2201,7 @@ public class Mytix {
                     "SELECT Orders.pid, Reserved_tickets.section_name, COUNT(*) AS sold " +
                     "FROM Tickets JOIN Reserved_tickets ON Tickets.tid = Reserved_tickets.tid " +
                     "             JOIN Orders ON Tickets.oid = Orders.oid " +
-                    "WHERE Tickets.cancelled = false " +
+                    "WHERE Tickets.cancel_datetime IS NULL " +
                     "GROUP BY Orders.pid, Reserved_tickets.section_name"
                 );
                 stmt.executeUpdate(
@@ -1430,7 +2230,7 @@ public class Mytix {
                     "SELECT Orders.pid, General_tickets.section_name, COUNT(*) AS sold " +
                     "FROM Tickets JOIN General_tickets ON Tickets.tid = General_tickets.tid " +
                     "             JOIN Orders ON Tickets.oid = Orders.oid " +
-                    "WHERE Tickets.cancelled = false " +
+                    "WHERE Tickets.cancel_datetime IS NULL " +
                     "GROUP BY Orders.pid, General_tickets.section_name "
                 );
                 stmt.executeUpdate(
@@ -1464,6 +2264,7 @@ public class Mytix {
                 "                  JOIN Pid_price ON Performances.pid = Pid_price.pid " +
                 "WHERE POWER(Venues.latitude - ?, 2) + POWER(Venues.longitude - ?, 2) <= POWER(?, 2) " +
                 "      AND Performances.datetime >= CURRENT_TIMESTAMP " +
+                "      AND Performances.cancel_datetime IS NULL " +
                 "ORDER BY Pid_price.cheapest_available_ticket ";
             try (PreparedStatement ps = conn.prepareStatement(sql)) {
                 ps.setDouble(1, latitude);
@@ -1505,6 +2306,7 @@ public class Mytix {
             "FROM Performances JOIN Events ON Performances.eid = Events.eid " +
             "                  JOIN Venues ON Performances.venue_name = Venues.name " +
             "WHERE LEFT(Venues.postal_code, 3) = LEFT(?, 3) " +
+            "      AND Performances.cancel_datetime IS NULL " +
             "      AND Performances.datetime >= CURRENT_TIMESTAMP ";
         try (PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setString(1, postal);
@@ -1534,6 +2336,7 @@ public class Mytix {
             "FROM Performances JOIN Events ON Performances.eid = Events.eid " +
             "                  JOIN Venues ON Performances.venue_name = Venues.name " +
             "WHERE Venues.address = ? " +
+            "      AND Performances.cancel_datetime IS NULL " +
             "      AND Performances.datetime >= CURRENT_TIMESTAMP ";
         try (PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setString(1, address);
@@ -1572,7 +2375,7 @@ public class Mytix {
                 "CREATE TEMPORARY TABLE Sold_table AS " +
                 "SELECT Orders.pid, COUNT(*) AS sold " +
                 "FROM Orders JOIN Tickets ON Orders.oid = Tickets.oid " +
-                "WHERE Tickets.cancelled = false " +
+                "WHERE Tickets.cancel_datetime IS NULL " +
                 "GROUP BY Orders.pid"
             );
 
@@ -1607,6 +2410,7 @@ public class Mytix {
             "                 LEFT JOIN Sold_table ON Performances.pid = Sold_table.pid " +
             "                 LEFT JOIN Reserved_blocked_table ON Performances.pid = Reserved_blocked_table.pid " +
             "WHERE Performances.datetime BETWEEN ? AND ? " +
+            "      AND Performances.cancel_datetime IS NULL " +
             "  AND IFNULL(Reserved_capacity_table.reserved_capacity, 0) + IFNULL(General_capacity_table.general_capacity, 0) - IFNULL(Sold_table.sold, 0) - IFNULL(Reserved_blocked_table.blocked, 0) >= ?";
 
         try (PreparedStatement ps = conn.prepareStatement(sql)) {
@@ -1652,7 +2456,7 @@ public class Mytix {
                 "SELECT Orders.pid, Reserved_tickets.section_name, COUNT(*) AS sold " +
                 "FROM Tickets JOIN Reserved_tickets ON Tickets.tid = Reserved_tickets.tid " +
                 "             JOIN Orders ON Tickets.oid = Orders.oid " +
-                "WHERE Tickets.cancelled = false " +
+                "WHERE Tickets.cancel_datetime IS NULL " +
                 "GROUP BY Orders.pid, Reserved_tickets.section_name"
             );
             stmt.executeUpdate(
@@ -1681,7 +2485,7 @@ public class Mytix {
                 "SELECT Orders.pid, General_tickets.section_name, COUNT(*) AS sold " +
                 "FROM Tickets JOIN General_tickets ON Tickets.tid = General_tickets.tid " +
                 "             JOIN Orders ON Tickets.oid = Orders.oid " +
-                "WHERE Tickets.cancelled = false " +
+                "WHERE Tickets.cancel_datetime IS NULL " +
                 "GROUP BY Orders.pid, General_tickets.section_name "
             );
             stmt.executeUpdate(
@@ -1760,7 +2564,9 @@ public class Mytix {
                 "                  JOIN Venues ON Performances.venue_name = Venues.name " +
                 "                  JOIN Genres ON Events.genre = Genres.genre " +
                 "                  JOIN Pid_price ON Performances.pid = Pid_price.pid " +
-                "                  JOIN Num_available_tickets ON Performances.pid = Num_available_tickets.pid"
+                "                  JOIN Num_available_tickets ON Performances.pid = Num_available_tickets.pid " +
+                "WHERE Performances.cancel_datetime IS NULL " +
+                "  AND Performances.datetime >= CURRENT_TIMESTAMP"
             );
 
             System.out.print("Filters: city, segment, genre, datetime range, cheapest available ticket\n");
@@ -1895,13 +2701,13 @@ public class Mytix {
         int pid = Integer.parseInt(scanner.nextLine());
 
         try (Statement stmt = conn.createStatement()) {
-            stmt.executeUpdate("DROP TABLE IF EXISTS Reserved_capacity");
-            stmt.executeUpdate("DROP TABLE IF EXISTS Reserved_sold");
-            stmt.executeUpdate("DROP TABLE IF EXISTS Reserved_blocked");
-            stmt.executeUpdate("DROP TABLE IF EXISTS Reserved");
-            stmt.executeUpdate("DROP TABLE IF EXISTS General_capacity");
-            stmt.executeUpdate("DROP TABLE IF EXISTS General_sold");
-            stmt.executeUpdate("DROP TABLE IF EXISTS General");
+            stmt.executeUpdate("DROP TEMPORARY TABLE IF EXISTS Reserved_capacity");
+            stmt.executeUpdate("DROP TEMPORARY TABLE IF EXISTS Reserved_sold");
+            stmt.executeUpdate("DROP TEMPORARY TABLE IF EXISTS Reserved_blocked");
+            stmt.executeUpdate("DROP TEMPORARY TABLE IF EXISTS Reserved");
+            stmt.executeUpdate("DROP TEMPORARY TABLE IF EXISTS General_capacity");
+            stmt.executeUpdate("DROP TEMPORARY TABLE IF EXISTS General_sold");
+            stmt.executeUpdate("DROP TEMPORARY TABLE IF EXISTS General");
 
             try (PreparedStatement ps = conn.prepareStatement(
                     "CREATE TEMPORARY TABLE Reserved_capacity AS " +
@@ -1919,7 +2725,7 @@ public class Mytix {
                     "FROM Performances JOIN Orders ON Performances.pid = Orders.pid " +
                     "                  JOIN Tickets ON Orders.oid = Tickets.oid " +
                     "                  JOIN Reserved_tickets ON Tickets.tid = Reserved_tickets.tid " +
-                    "WHERE Performances.pid = ? AND Tickets.cancelled = false " +
+                    "WHERE Performances.pid = ? AND Tickets.cancel_datetime IS NULL " +
                     "GROUP BY Reserved_tickets.section_name")) {
                 ps.setInt(1, pid);
                 ps.executeUpdate();
@@ -1957,7 +2763,7 @@ public class Mytix {
                     "FROM Performances JOIN Orders ON Performances.pid = Orders.pid " +
                     "                  JOIN Tickets ON Orders.oid = Tickets.oid " +
                     "                  JOIN General_tickets ON Tickets.tid = General_tickets.tid " +
-                    "WHERE Performances.pid = ? AND Tickets.cancelled = false " +
+                    "WHERE Performances.pid = ? AND Tickets.cancel_datetime IS NULL " +
                     "GROUP BY General_tickets.section_name")) {
                 ps.setInt(1, pid);
                 ps.executeUpdate();
@@ -1982,7 +2788,7 @@ public class Mytix {
                 ps.setInt(1, pid);
                 try (ResultSet rs = ps.executeQuery()) {
                     System.out.printf("%-30s %-10s %-10s %-10s %-30s %-10s%n", "Section", "Available", "Sold", "Blocked", "Pricetier name", "Price");
-                    System.out.println("-".repeat(32));
+                    System.out.println("-".repeat(100));
                     while (rs.next()) {
                         System.out.printf("%-30s %-10s %-10s %-10s %-30s %-10s%n",
                                 rs.getString("section_name"),
@@ -1994,6 +2800,936 @@ public class Mytix {
                     }
                 }
             }
+        }
+    }
+
+    private static void r1_1_city_ticket_or_revenue_rank(Connection conn, Scanner scanner) throws SQLException {
+        System.out.print("Enter the start datetime: YYYY-MM-DD HH:MM:SS\n");
+        String start = scanner.nextLine();
+        System.out.print("Enter the end datetime: YYYY-MM-DD HH:MM:SS\n");
+        String end = scanner.nextLine();
+
+        try (Statement stmt = conn.createStatement()) {
+            stmt.executeUpdate("DROP TEMPORARY TABLE IF EXISTS Unordered_list");
+        }
+        try (PreparedStatement ps = conn.prepareStatement(
+            "CREATE TEMPORARY TABLE Unordered_list AS " +
+            "SELECT Venues.city, Venues.country, COUNT(*) tickets_sold, SUM(Tickets.face_value) AS gross_revenue " +
+            "FROM Tickets JOIN Orders ON Tickets.oid = Orders.oid " +
+            "             JOIN Performances ON Orders.pid = Performances.pid " +
+            "             JOIN Venues ON Performances.venue_name = Venues.name " +
+            "WHERE Tickets.cancel_datetime IS NULL " +
+            "  AND Orders.datetime >= ? " +
+            "  AND Orders.datetime <= ? " +
+            "GROUP BY Venues.city, Venues.country"
+        )) {
+            ps.setString(1, start);
+            ps.setString(2, end);
+            ps.executeUpdate();
+        }
+
+        System.out.print("Would you like to rank by tickets sold or gross revenue? 1/2\n");
+        String choice = scanner.nextLine();
+
+                if (choice.equals("1")) {
+            try (Statement stmt = conn.createStatement();
+                 ResultSet rs = stmt.executeQuery(
+                     "SELECT * " +
+                     "FROM Unordered_list " +
+                     "ORDER BY tickets_sold DESC"
+                 )) {
+
+                System.out.printf(
+                    "%-25s %-25s %-15s %-15s%n",
+                    "City", "Country", "Tickets Sold", "Gross Revenue"
+                );
+                System.out.println("-".repeat(85));
+
+                while (rs.next()) {
+                    System.out.printf(
+                        "%-25s %-25s %-15d %-15s%n",
+                        rs.getString("city"),
+                        rs.getString("country"),
+                        rs.getInt("tickets_sold"),
+                        rs.getBigDecimal("gross_revenue")
+                    );
+                }
+            }
+        }
+        else if (choice.equals("2")) {
+            try (Statement stmt = conn.createStatement();
+                 ResultSet rs = stmt.executeQuery(
+                     "SELECT * " +
+                     "FROM Unordered_list " +
+                     "ORDER BY gross_revenue DESC"
+                 )) {
+
+                System.out.printf(
+                    "%-25s %-25s %-15s %-15s%n",
+                    "City", "Country", "Tickets Sold", "Gross Revenue"
+                );
+                System.out.println("-".repeat(85));
+
+                while (rs.next()) {
+                    System.out.printf(
+                        "%-25s %-25s %-15d %-15s%n",
+                        rs.getString("city"),
+                        rs.getString("country"),
+                        rs.getInt("tickets_sold"),
+                        rs.getBigDecimal("gross_revenue")
+                    );
+                }
+            }
+        }
+        else {
+            System.out.print("Invalid choice.\n");
+        }
+    }
+
+    private static void r1_2_venue_ticket_or_revenue_rank(Connection conn, Scanner scanner) throws SQLException {
+        System.out.print("Enter the start datetime: YYYY-MM-DD HH:MM:SS\n");
+        String start = scanner.nextLine();
+        System.out.print("Enter the end datetime: YYYY-MM-DD HH:MM:SS\n");
+        String end = scanner.nextLine();
+        System.out.print("Enter the city:\n");
+        String city = scanner.nextLine();
+        System.out.print("Enter country of the city:\n");
+        String country = scanner.nextLine();
+
+        try (Statement stmt = conn.createStatement()) {
+            stmt.executeUpdate("DROP TEMPORARY TABLE IF EXISTS Unordered_list");
+        }
+        try (PreparedStatement ps = conn.prepareStatement(
+            "CREATE TEMPORARY TABLE Unordered_list AS " +
+            "SELECT Venues.name, COUNT(*) tickets_sold, SUM(Tickets.face_value) AS gross_revenue " +
+            "FROM Tickets JOIN Orders ON Tickets.oid = Orders.oid " +
+            "             JOIN Performances ON Orders.pid = Performances.pid " +
+            "             JOIN Venues ON Performances.venue_name = Venues.name " +
+            "WHERE Tickets.cancel_datetime IS NULL " +
+            "  AND Orders.datetime >= ? " +
+            "  AND Orders.datetime <= ? " +
+            "  AND Venues.country = ? " +
+            "  AND Venues.city = ? " +
+            "GROUP BY Venues.name"
+        )) {
+            ps.setString(1, start);
+            ps.setString(2, end);
+            ps.setString(3, country);
+            ps.setString(4, city);
+            ps.executeUpdate();
+        }
+
+        System.out.print("Would you like to rank by tickets sold or gross revenue? 1/2\n");
+        String choice = scanner.nextLine();
+
+        if (choice.equals("1")) {
+            try (Statement stmt = conn.createStatement();
+                 ResultSet rs = stmt.executeQuery(
+                     "SELECT * " +
+                     "FROM Unordered_list " +
+                     "ORDER BY tickets_sold DESC"
+                 )) {
+
+                System.out.printf(
+                    "%-25s %-15s %-15s%n",
+                    "Venue", "Tickets Sold", "Gross Revenue"
+                );
+                System.out.println("-".repeat(85));
+
+                while (rs.next()) {
+                    System.out.printf(
+                        "%-25s %-15d %-15s%n",
+                        rs.getString("name"),
+                        rs.getInt("tickets_sold"),
+                        rs.getBigDecimal("gross_revenue")
+                    );
+                }
+            }
+        }
+        else if (choice.equals("2")) {
+            try (Statement stmt = conn.createStatement();
+                 ResultSet rs = stmt.executeQuery(
+                     "SELECT * " +
+                     "FROM Unordered_list " +
+                     "ORDER BY gross_revenue DESC"
+                 )) {
+
+                System.out.printf(
+                    "%-25s %-15s %-15s%n",
+                    "Venue", "Tickets Sold", "Gross Revenue"
+                );
+                System.out.println("-".repeat(85));
+
+                while (rs.next()) {
+                    System.out.printf(
+                        "%-25s %-15d %-15s%n",
+                        rs.getString("name"),
+                        rs.getInt("tickets_sold"),
+                        rs.getBigDecimal("gross_revenue")
+                    );
+                }
+            }
+        }
+        else {
+            System.out.print("Invalid choice.\n");
+        }
+    }
+
+    private static void r2_1_genre_report(Connection conn, Scanner scanner) throws SQLException {
+        try (Statement stmt = conn.createStatement();
+            ResultSet rs = stmt.executeQuery(
+                "SELECT Segments.segment, Genres.genre, COUNT(DISTINCT Events.eid) AS num_of_events, COUNT(DISTINCT Performances.pid) AS num_of_performances " +
+                "FROM Performances JOIN Events ON Performances.eid = Events.eid " +
+                "                  JOIN Genres ON Events.genre = Genres.genre " +
+                "                  JOIN Segments ON Genres.segment = Segments.segment " +
+                "WHERE Performances.cancel_datetime IS NULL " +
+                "GROUP BY Segments.segment, Genres.genre"
+            )) {
+
+            System.out.printf(
+                "%-25s %-25s %-20s %-20s%n",
+                "Segment", "Genre", "Number of events", "Number of performances"
+            );
+            System.out.println("-".repeat(90));
+
+            while (rs.next()) {
+                System.out.printf(
+                    "%-25s %-25s %-20s %-20s%n",
+                    rs.getString("segment"),
+                    rs.getString("genre"),
+                    rs.getInt("num_of_events"),
+                    rs.getInt("num_of_performances")
+                );
+            }
+        }
+    }
+
+    private static void r2_2_country_report(Connection conn, Scanner scanner) throws SQLException {
+        try (Statement stmt = conn.createStatement();
+            ResultSet rs = stmt.executeQuery(
+                "SELECT Venues.country, COUNT(DISTINCT Events.eid) AS num_of_events, COUNT(DISTINCT Performances.pid) AS num_of_performances " +
+                "FROM Performances JOIN Events ON Performances.eid = Events.eid " +
+                "                  JOIN Venues ON Performances.venue_name = Venues.name " +
+                "WHERE Performances.cancel_datetime IS NULL " +
+                "GROUP BY Venues.country"
+            )) {
+
+            System.out.printf(
+                "%-25s %-20s %-20s%n",
+                "Country", "Number of events", "Number of performances"
+            );
+            System.out.println("-".repeat(65));
+
+            while (rs.next()) {
+                System.out.printf(
+                    "%-25s %-20s %-20s%n",
+                    rs.getString("country"),
+                    rs.getInt("num_of_events"),
+                    rs.getInt("num_of_performances")
+                );
+            }
+        }
+    }
+
+    private static void r2_3_country_city_report(Connection conn, Scanner scanner) throws SQLException {
+        try (Statement stmt = conn.createStatement();
+            ResultSet rs = stmt.executeQuery(
+                "SELECT Venues.country, Venues.city, COUNT(DISTINCT Events.eid) AS num_of_events, COUNT(DISTINCT Performances.pid) AS num_of_performances " +
+                "FROM Performances JOIN Events ON Performances.eid = Events.eid " +
+                "                  JOIN Venues ON Performances.venue_name = Venues.name " +
+                "WHERE Performances.cancel_datetime IS NULL " +
+                "GROUP BY Venues.country, Venues.city"
+            )) {
+
+            System.out.printf(
+                "%-25s %-25s %-20s %-20s%n",
+                "Country", "City", "Number of events", "Number of performances"
+            );
+            System.out.println("-".repeat(85));
+
+            while (rs.next()) {
+                System.out.printf(
+                    "%-25s %-25s %-20s %-20s%n",
+                    rs.getString("country"),
+                    rs.getString("city"),
+                    rs.getInt("num_of_events"),
+                    rs.getInt("num_of_performances")
+                );
+            }
+        }
+    }
+
+    private static void r2_4_country_city_venue_report(Connection conn, Scanner scanner) throws SQLException {
+        try (Statement stmt = conn.createStatement();
+            ResultSet rs = stmt.executeQuery(
+                "SELECT Venues.country, Venues.city, Venues.name AS venue, COUNT(DISTINCT Events.eid) AS num_of_events, COUNT(DISTINCT Performances.pid) AS num_of_performances " +
+                "FROM Performances JOIN Events ON Performances.eid = Events.eid " +
+                "                  JOIN Venues ON Performances.venue_name = Venues.name " +
+                "WHERE Performances.cancel_datetime IS NULL " +
+                "GROUP BY Venues.country, Venues.city, Venues.name"
+            )) {
+
+            System.out.printf(
+                "%-25s %-25s %-25s %-20s %-20s%n",
+                "Country", "City", "Venue", "Number of events", "Number of performances"
+            );
+            System.out.println("-".repeat(85));
+
+            while (rs.next()) {
+                System.out.printf(
+                    "%-25s %-25s %-25s %-20s %-20s%n",
+                    rs.getString("country"),
+                    rs.getString("city"),
+                    rs.getString("venue"),
+                    rs.getInt("num_of_events"),
+                    rs.getInt("num_of_performances")
+                );
+            }
+        }
+    }
+
+    private static void r3_1_organizer_overall_revenue_rank(Connection conn, Scanner scanner) throws SQLException {
+        try (Statement stmt = conn.createStatement();
+            ResultSet rs = stmt.executeQuery(
+                "SELECT Events.uid AS organizer, Users.name, SUM(Tickets.face_value) AS revenue " +
+                "FROM Events JOIN Performances ON Events.eid = Performances.eid " +
+                "            JOIN Orders ON Performances.pid = Orders.pid " +
+                "            JOIN Tickets ON Orders.oid = Tickets.oid " +
+                "            JOIN Users ON Events.uid = Users.uid " +
+                "WHERE Tickets.cancel_datetime IS NULL " +
+                "GROUP BY Events.uid, Users.name " +
+                "ORDER BY revenue DESC"
+            )) {
+
+            System.out.printf(
+                "%-10s %-30s %-10s%n",
+                "UID", "Organizer name", "Revenue"
+            );
+            System.out.println("-".repeat(50));
+
+            while (rs.next()) {
+                System.out.printf(
+                    "%-10s %-30s %-10s%n",
+                    rs.getInt("organizer"),
+                    rs.getString("name"),
+                    rs.getBigDecimal("revenue")
+                );
+            }
+        }
+    }
+
+    private static void r3_2_organizer_country_revenue_rank(Connection conn, Scanner scanner) throws SQLException {
+        try (Statement stmt = conn.createStatement();
+            ResultSet rs = stmt.executeQuery(
+                "SELECT Events.uid AS organizer, Venues.country, Users.name, SUM(Tickets.face_value) AS revenue " +
+                "FROM Events JOIN Performances ON Events.eid = Performances.eid " +
+                "            JOIN Orders ON Performances.pid = Orders.pid " +
+                "            JOIN Tickets ON Orders.oid = Tickets.oid " +
+                "            JOIN Users ON Events.uid = Users.uid " +
+                "            JOIN Venues ON Performances.venue_name = Venues.name " +
+                "WHERE Tickets.cancel_datetime IS NULL " +
+                "GROUP BY Events.uid, Users.name, Venues.country " +
+                "ORDER BY country, revenue DESC"
+            )) {
+
+            System.out.printf(
+                "%-10s %-30s %-30s %-10s%n",
+                "UID", "Organizer name", "Country", "Revenue"
+            );
+            System.out.println("-".repeat(80));
+
+            while (rs.next()) {
+                System.out.printf(
+                    "%-10s %-30s %-30s %-10s%n",
+                    rs.getInt("organizer"),
+                    rs.getString("name"),
+                    rs.getString("country"),
+                    rs.getBigDecimal("revenue")
+                );
+            }
+        }
+    }
+
+    private static void r3_3_organizer_country_city_revenue_rank(Connection conn, Scanner scanner) throws SQLException {
+        try (Statement stmt = conn.createStatement();
+            ResultSet rs = stmt.executeQuery(
+                "SELECT Events.uid AS organizer, Venues.country, Venues.city, Users.name, SUM(Tickets.face_value) AS revenue " +
+                "FROM Events JOIN Performances ON Events.eid = Performances.eid " +
+                "            JOIN Orders ON Performances.pid = Orders.pid " +
+                "            JOIN Tickets ON Orders.oid = Tickets.oid " +
+                "            JOIN Users ON Events.uid = Users.uid " +
+                "            JOIN Venues ON Performances.venue_name = Venues.name " +
+                "WHERE Tickets.cancel_datetime IS NULL " +
+                "GROUP BY Events.uid, Users.name, Venues.country, Venues.city " +
+                "ORDER BY country, city, revenue DESC"
+            )) {
+
+            System.out.printf(
+                "%-10s %-30s %-30s %-30s %-10s%n",
+                "UID", "Organizer name", "Country", "City", "Revenue"
+            );
+            System.out.println("-".repeat(110));
+
+            while (rs.next()) {
+                System.out.printf(
+                    "%-10s %-30s %-30s %-30s %-10s%n",
+                    rs.getInt("organizer"),
+                    rs.getString("name"),
+                    rs.getString("country"),
+                    rs.getString("city"),
+                    rs.getBigDecimal("revenue")
+                );
+            }
+        }
+    }
+
+    private static void r4_ticket_scalpers_eport(Connection conn, Scanner scanner) throws SQLException {
+        try (Statement stmt = conn.createStatement()) {
+            stmt.executeUpdate(
+                "DROP TEMPORARY TABLE IF EXISTS User_purchase_detail"
+            );
+
+            stmt.executeUpdate(
+                "CREATE TEMPORARY TABLE User_purchase_detail AS " +
+                "SELECT Orders.uid, Tickets.tid, Venues.country, Venues.city " +
+                "FROM Orders JOIN Tickets ON Orders.oid = Tickets.oid " +
+                "            JOIN Performances ON Orders.pid = Performances.pid " +
+                "            JOIN Venues ON Performances.venue_name = Venues.name " +
+                "WHERE Orders.datetime >= CURRENT_TIMESTAMP - INTERVAL 1 YEAR " +
+                "  AND Orders.datetime <= CURRENT_TIMESTAMP " +
+
+                "UNION ALL " +
+
+                "SELECT Listings.buyer_id AS uid, Listings.tid, Venues.country, Venues.city " +
+                "FROM Listings JOIN Tickets ON Listings.tid = Tickets.tid " +
+                "              JOIN Orders ON Tickets.oid = Orders.oid " +
+                "              JOIN Performances ON Orders.pid = Performances.pid " +
+                "              JOIN Venues ON Performances.venue_name = Venues.name " +
+                "WHERE Listings.trans_datetime IS NOT NULL " +
+                "  AND Listings.buyer_id IS NOT NULL " +
+                "  AND Listings.trans_datetime >= CURRENT_TIMESTAMP - INTERVAL 1 YEAR " +
+                "  AND Listings.trans_datetime <= CURRENT_TIMESTAMP"
+            );
+
+            stmt.executeUpdate(
+                "DROP TEMPORARY TABLE IF EXISTS User_purchase"
+            );
+
+            stmt.executeUpdate(
+                "CREATE TEMPORARY TABLE User_purchase AS " +
+                "SELECT country, city, uid, COUNT(DISTINCT tid) AS purchased " +
+                "FROM User_purchase_detail " +
+                "GROUP BY country, city, uid"
+            );
+
+            stmt.executeUpdate(
+                "DROP TEMPORARY TABLE IF EXISTS User_list"
+            );
+
+            stmt.executeUpdate(
+                "CREATE TEMPORARY TABLE User_list AS " +
+                "SELECT User_purchase_detail.country, " +
+                "       User_purchase_detail.city, " +
+                "       User_purchase_detail.uid, " +
+                "       COUNT(DISTINCT User_purchase_detail.tid) AS listed " +
+                "FROM User_purchase_detail JOIN Listings ON Listings.tid = User_purchase_detail.tid " +
+                "                                        AND Listings.seller_id = User_purchase_detail.uid " +
+                "GROUP BY User_purchase_detail.country, " +
+                "         User_purchase_detail.city, " +
+                "         User_purchase_detail.uid"
+            );
+        }
+        try (Statement s = conn.createStatement();
+            ResultSet rs = s.executeQuery(
+                "SELECT * " +
+                "FROM User_purchase NATURAL JOIN User_list " +
+                "WHERE User_list.listed * 2 > User_purchase.purchased " +
+                "  AND User_purchase.purchased >= 10"
+            )) {
+
+            System.out.printf(
+                "%-30s %-30s %-10s %-10s %-10s%n",
+                "Country", "City", "UID", "Purchased", "Listed"
+            );
+            System.out.println("-".repeat(90));
+
+            while (rs.next()) {
+                System.out.printf(
+                    "%-30s %-30s %-10s %-10s %-10s%n",
+                    rs.getString("country"),
+                    rs.getString("city"),
+                    rs.getInt("uid"),
+                    rs.getInt("purchased"),
+                    rs.getInt("listed")
+                );
+            }
+        }
+    }
+
+    private static void r5_1_customer_order_rank(Connection conn, Scanner scanner) throws SQLException {
+        System.out.print("Enter the start datetime: YYYY-MM-DD HH:MM:SS");
+        String start = scanner.nextLine();
+        System.out.print("Enter the end datetime: YYYY-MM-DD HH:MM:SS");
+        String end = scanner.nextLine();
+
+        try (PreparedStatement ps = conn.prepareStatement(
+                "SELECT Users.uid, Users.name, COUNT(Orders.oid) AS num_of_orders " +
+                "FROM Orders JOIN Users ON Orders.uid = Users.uid " +
+                "WHERE Orders.datetime >= ? AND Orders.datetime <= ? " +
+                "GROUP BY Users.uid " +
+                "ORDER BY num_of_orders DESC "
+            )) {
+                ps.setString(1, start);
+                ps.setString(2, end);
+
+            try (ResultSet rs = ps.executeQuery()) {
+                System.out.printf(
+                    "%-10s %-30s %-15s%n",
+                    "UID", "Customer name", "Number of orders"
+                );
+                System.out.println("-".repeat(55));
+
+                while (rs.next()) {
+                    System.out.printf(
+                        "%-10d %-30s %-15d%n",
+                        rs.getInt("uid"),
+                        rs.getString("name"),
+                        rs.getInt("num_of_orders")
+                    );
+                }
+            }
+        }
+    }
+
+    private static void r5_2_customer_order_city_rank(Connection conn, Scanner scanner) throws SQLException {
+        System.out.print("Enter the start datetime: YYYY-MM-DD HH:MM:SS");
+        String start = scanner.nextLine();
+        System.out.print("Enter the end datetime: YYYY-MM-DD HH:MM:SS");
+        String end = scanner.nextLine();
+
+        try (PreparedStatement ps = conn.prepareStatement(
+                "SELECT Users.uid, Users.name, Venues.country, Venues.city, COUNT(Orders.oid) AS num_of_orders " +
+                "FROM Orders JOIN Users ON Orders.uid = Users.uid " +
+                "            JOIN Performances ON Orders.pid = Performances.pid " +
+                "            JOIN Venues ON Performances.venue_name = Venues.name " +
+                "WHERE Orders.datetime >= ? AND Orders.datetime <= ? " +
+                "GROUP BY Venues.country, Venues.city, Users.uid, Users.name " +
+                "HAVING num_of_orders >= 2 " +
+                "ORDER BY Venues.country, Venues.city, num_of_orders DESC "
+            )) {
+                ps.setString(1, start);
+                ps.setString(2, end);
+
+            try (ResultSet rs = ps.executeQuery()) {
+                System.out.printf(
+                    " %-20s %-20s %-10s %-30s %-15s%n",
+                    "Country", "City", "UID", "Customer name", "Number of orders"
+                );
+                System.out.println("-".repeat(95));
+
+                while (rs.next()) {
+                    System.out.printf(
+                        " %-20s %-20s %-10d %-30s %-15d%n",
+                        rs.getString("country"),
+                        rs.getString("city"),
+                        rs.getInt("uid"),
+                        rs.getString("name"),
+                        rs.getInt("num_of_orders")
+                    );
+                }
+            }
+        }
+    }
+
+    private static void r6_1_customer_cancel_ticket_rank(Connection conn, Scanner scanner) throws SQLException {
+        try (Statement stmt = conn.createStatement();
+            ResultSet rs = stmt.executeQuery(
+                "SELECT Users.uid, Users.name, COUNT(*) AS cancelled " +
+                "FROM Users JOIN Orders ON Users.uid = Orders.uid " +
+                "           JOIN Tickets ON Orders.oid = Tickets.oid " +
+                "           JOIN Performances ON Orders.pid = Performances.pid " +
+                "WHERE Tickets.cancel_datetime IS NOT NULL " +
+                "  AND Tickets.cancel_datetime >= CURRENT_TIMESTAMP - INTERVAL 1 YEAR " +
+                "  AND Tickets.cancel_datetime <= CURRENT_TIMESTAMP " +
+                "  AND Performances.cancel_datetime IS NULL " +
+                "GROUP BY Users.uid, Users.name " +
+                "ORDER BY cancelled DESC"
+            )) {
+
+            System.out.printf(
+                "%-10s %-20s %-30s%n",
+                "UID", "Customer name", "Number of tickets cancelled"
+            );
+            System.out.println("-".repeat(60));
+
+            while (rs.next()) {
+                System.out.printf(
+                    "%-10d %-20s %-30d%n",
+                    rs.getInt("uid"),
+                    rs.getString("name"),
+                    rs.getInt("cancelled")
+                );
+            }
+        }
+    }
+
+    private static void r6_2_organizer_cancel_performance_rank(Connection conn, Scanner scanner) throws SQLException {
+        try (Statement stmt = conn.createStatement();
+            ResultSet rs = stmt.executeQuery(
+                "SELECT Users.uid, Users.name, COUNT(*) AS cancelled " +
+                "FROM Users JOIN Events ON Users.uid = Events.uid " +
+                "           JOIN Performances ON Events.eid = Performances.eid " +
+                "WHERE Performances.cancel_datetime IS NOT NULL " +
+                "  AND Performances.cancel_datetime >= CURRENT_TIMESTAMP - INTERVAL 1 YEAR " +
+                "  AND Performances.cancel_datetime <= CURRENT_TIMESTAMP " +
+                "GROUP BY Users.uid, Users.name " +
+                "ORDER BY cancelled DESC"
+            )) {
+
+            System.out.printf(
+                "%-10s %-20s %-30s%n",
+                "UID", "Organizer name", "Number of performances cancelled"
+            );
+            System.out.println("-".repeat(60));
+
+            while (rs.next()) {
+                System.out.printf(
+                    "%-10d %-20s %-30d%n",
+                    rs.getInt("uid"),
+                    rs.getString("name"),
+                    rs.getInt("cancelled")
+                );
+            }
+        }
+    }
+
+    private static void r7_performance_sell_through_rate(Connection conn, Scanner scanner) throws SQLException {
+        try (Statement stmt = conn.createStatement()) {
+            stmt.executeUpdate("DROP TEMPORARY TABLE IF EXISTS Reserved_capacity");
+            stmt.executeUpdate("DROP TEMPORARY TABLE IF EXISTS Reserved_sold");
+            stmt.executeUpdate("DROP TEMPORARY TABLE IF EXISTS Reserved_blocked");
+            stmt.executeUpdate("DROP TEMPORARY TABLE IF EXISTS Reserved");
+            stmt.executeUpdate("DROP TEMPORARY TABLE IF EXISTS General_capacity");
+            stmt.executeUpdate("DROP TEMPORARY TABLE IF EXISTS General_sold");
+            stmt.executeUpdate("DROP TEMPORARY TABLE IF EXISTS General");
+
+            stmt.executeUpdate(
+                    "CREATE TEMPORARY TABLE Reserved_capacity AS " +
+                    "SELECT Performances.pid, Seats.section_name, COUNT(*) AS capacity " +
+                    "FROM Performances JOIN Seats ON Performances.venue_name = Seats.venue_name " +
+                    "GROUP BY Performances.pid, Seats.section_name"
+            );
+
+            stmt.executeUpdate(
+                    "CREATE TEMPORARY TABLE Reserved_sold AS " +
+                    "SELECT Performances.pid, Reserved_tickets.section_name, COUNT(*) AS sold " +
+                    "FROM Performances JOIN Orders ON Performances.pid = Orders.pid " +
+                    "                  JOIN Tickets ON Orders.oid = Tickets.oid " +
+                    "                  JOIN Reserved_tickets ON Tickets.tid = Reserved_tickets.tid " +
+                    "WHERE Tickets.cancel_datetime IS NULL " +
+                    "GROUP BY Performances.pid, Reserved_tickets.section_name"
+            );
+
+            stmt.executeUpdate(
+                    "CREATE TEMPORARY TABLE Reserved_blocked AS " +
+                    "SELECT Performances.pid, Block.section_name, COUNT(*) AS blocked " +
+                    "FROM Performances JOIN Block ON Performances.pid = Block.pid " +
+                    "GROUP BY Performances.pid, Block.section_name"
+            );
+
+            stmt.executeUpdate(
+                    "CREATE TEMPORARY TABLE Reserved AS " +
+                    "SELECT Reserved_capacity.pid, Reserved_capacity.section_name, (Reserved_capacity.capacity - IFNULL(Reserved_blocked.blocked, 0)) AS sellable, IFNULL(Reserved_sold.sold, 0) AS sold " +
+                    "FROM Reserved_capacity LEFT JOIN Reserved_sold ON Reserved_capacity.pid = Reserved_sold.pid" +
+                    "                                               AND Reserved_capacity.section_name = Reserved_sold.section_name " +
+                    "                       LEFT JOIN Reserved_blocked ON Reserved_capacity.pid = Reserved_blocked.pid " +
+                    "                                               AND Reserved_capacity.section_name = Reserved_blocked.section_name"
+            );
+
+            stmt.executeUpdate(
+                    "CREATE TEMPORARY TABLE General_capacity AS " +
+                    "SELECT Performances.pid, General_sections.name AS section_name, General_sections.total_capacity AS capacity " +
+                    "FROM Performances JOIN General_sections ON Performances.venue_name = General_sections.venue_name "
+            );
+
+            stmt.executeUpdate(
+                    "CREATE TEMPORARY TABLE General_sold AS " +
+                    "SELECT Performances.pid, General_tickets.section_name, COUNT(*) AS sold " +
+                    "FROM Performances JOIN Orders ON Performances.pid = Orders.pid " +
+                    "                  JOIN Tickets ON Orders.oid = Tickets.oid " +
+                    "                  JOIN General_tickets ON Tickets.tid = General_tickets.tid " +
+                    "WHERE Tickets.cancel_datetime IS NULL " +
+                    "GROUP BY Performances.pid, General_tickets.section_name"
+            );
+
+            stmt.executeUpdate(
+                    "CREATE TEMPORARY TABLE General AS " +
+                    "SELECT General_capacity.pid, General_capacity.section_name, General_capacity.capacity AS sellable, IFNULL(General_sold.sold, 0) AS sold " +
+                    "FROM General_capacity LEFT JOIN General_sold ON General_capacity.pid = General_sold.pid " +
+                    "                                             AND General_capacity.section_name = General_sold.section_name"
+            );
+            
+            System.out.print("Do you want per performance or per price-tier report? 1/2\n");
+            String choice = scanner.nextLine();
+
+            if (choice.equals("1")) {
+                try (ResultSet rs = stmt.executeQuery(
+                    "SELECT Price_tiers.pid, SUM(Both.sellable) AS sellable, SUM(Both.sold) AS sold, SUM(Both.sold) * 1.0 / NULLIF(SUM(Both.sellable), 0) AS sell_through_rate " +
+                    "FROM ((SELECT * FROM Reserved) UNION ALL (SELECT * FROM General)) AS Both " +
+                    "     JOIN Section_pricetier ON Both.pid = Section_pricetier.pid " +
+                    "                            AND Both.section_name = Section_pricetier.section_name " +
+                    "     JOIN Price_tiers ON Section_pricetier.pricetier_name = Price_tiers.name " +
+                    "                         AND Section_pricetier.pid = Price_tiers.pid " +
+                    "GROUP BY Price_tiers.pid"
+                )) {
+                    System.out.printf("%-10s %-10s %-10s %-20s%n", "PID", "Sellable", "Sold", "Sell-through rate");
+                    System.out.println("-".repeat(50));
+                    while (rs.next()) {
+                        System.out.printf("%-10d %-10d %-10d %-20.4f%n",
+                                rs.getInt("pid"),
+                                rs.getInt("sellable"),
+                                rs.getInt("sold"),
+                                rs.getDouble("sell_through_rate"));
+                    }
+                }
+            }
+            else if (choice.equals("2")) {
+                try (ResultSet rs = stmt.executeQuery(
+                    "SELECT Price_tiers.pid, Price_tiers.name, SUM(Both.sellable) AS sellable, SUM(Both.sold) AS sold, SUM(Both.sold) * 1.0 / NULLIF(SUM(Both.sellable), 0) AS sell_through_rate " +
+                    "FROM ((SELECT * FROM Reserved) UNION ALL (SELECT * FROM General)) AS Both " +
+                    "     JOIN Section_pricetier ON Both.pid = Section_pricetier.pid " +
+                    "                            AND Both.section_name = Section_pricetier.section_name " +
+                    "     JOIN Price_tiers ON Section_pricetier.pricetier_name = Price_tiers.name " +
+                    "                         AND Section_pricetier.pid = Price_tiers.pid " +
+                    "GROUP BY Price_tiers.pid, Price_tiers.name"
+                )) {
+                    System.out.printf("%-10s %-30s %-10s %-10s %-20s%n", "PID", "Price_tier name", "Sellable", "Sold", "Sell-through rate");
+                    System.out.println("-".repeat(80));
+                    while (rs.next()) {
+                        System.out.printf("%-10d %-30s %-10d %-10d %-20.4f%n",
+                                rs.getInt("pid"),
+                                rs.getString("name"),
+                                rs.getInt("sellable"),
+                                rs.getInt("sold"),
+                                rs.getDouble("sell_through_rate"));
+                    }
+                }
+            }
+
+            System.out.print("Enter month: YYYY-MM\n");
+            String month = scanner.nextLine();
+            java.time.YearMonth yearMonth;
+            try {
+            yearMonth = java.time.YearMonth.parse(month);
+            }
+            catch (java.time.format.DateTimeParseException e) {
+                System.out.println("Invalid month format.");
+                return;
+            }
+
+            Timestamp start = Timestamp.valueOf(yearMonth.atDay(1).atStartOfDay());
+            Timestamp end = Timestamp.valueOf(yearMonth.plusMonths(1).atDay(1).atStartOfDay());
+
+            System.out.print("Here are the performances that sold out or sold below 1/4:\n");
+            try (PreparedStatement ps = conn.prepareStatement(
+                "SELECT Venues.country, Venues.city, Both.pid, " +
+                "       SUM(Both.sellable) AS sellable, " +
+                "       SUM(Both.sold) AS sold, " +
+                "       SUM(Both.sold) * 1.0 / " +
+                "           NULLIF(SUM(Both.sellable), 0) AS sell_through_rate, " +
+                "       CASE " +
+                "           WHEN SUM(Both.sold) = SUM(Both.sellable) " +
+                "               THEN 'Sold out' " +
+                "           WHEN SUM(Both.sold) * 4 < SUM(Both.sellable) " +
+                "               THEN 'Below one quarter' " +
+                "       END AS status " +
+                "FROM ((SELECT * FROM Reserved) " +
+                "      UNION ALL " +
+                "      (SELECT * FROM General)) AS Both " +
+                "JOIN Performances ON Both.pid = Performances.pid " +
+                "JOIN Venues ON Performances.venue_name = Venues.name " +
+                "WHERE Performances.datetime >= ? " +
+                "  AND Performances.datetime < ? " +
+                "  AND Performances.cancel_datetime IS NULL " +
+                "GROUP BY Venues.country, Venues.city, Both.pid " +
+                "HAVING SUM(Both.sellable) > 0 " +
+                "   AND (SUM(Both.sold) = SUM(Both.sellable) " +
+                "        OR SUM(Both.sold) * 4 < SUM(Both.sellable)) " +
+                "ORDER BY Venues.country, Venues.city, Both.pid"
+            )) {
+                ps.setTimestamp(1, start);
+                ps.setTimestamp(2, end);
+
+                try (ResultSet rs = ps.executeQuery()) {
+                    System.out.printf(
+                        "%-20s %-20s %-10s %-10s %-10s %-20s %-20s%n",
+                        "Country", "City", "PID", "Sellable", "Sold",
+                        "Sell-through rate", "Status"
+                    );
+                    System.out.println("-".repeat(120));
+
+                    while (rs.next()) {
+                        System.out.printf(
+                            "%-20s %-20s %-10d %-10d %-10d %-20.4f %-20s%n",
+                            rs.getString("country"),
+                            rs.getString("city"),
+                            rs.getInt("pid"),
+                            rs.getInt("sellable"),
+                            rs.getInt("sold"),
+                            rs.getDouble("sell_through_rate"),
+                            rs.getString("status")
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    private static void r8_1_resales_report_completed_resale(Connection conn, Scanner scanner) throws SQLException {
+        try (Statement stmt = conn.createStatement();
+            ResultSet rs = stmt.executeQuery(
+                "SELECT Events.eid, Events.name, COUNT(Listings.lid) AS num " +
+                "FROM Listings JOIN Tickets ON Listings.tid = Tickets.tid " +
+                "              JOIN Orders ON Tickets.oid = Orders.oid " +
+                "              JOIN Performances ON Orders.pid = Performances.pid " +
+                "              JOIN Events ON Performances.eid = Events.eid " +
+                "WHERE Listings.buyer_id IS NOT NULL " +
+                "GROUP BY Events.eid, Events.name " +
+                "ORDER BY num DESC"
+            )) {
+
+            System.out.printf(
+                "%-10s %-30s %-20s%n",
+                "EID", "Event name", "Number of completed resales"
+            );
+            System.out.println("-".repeat(60));
+
+            while (rs.next()) {
+                System.out.printf(
+                    "%-10d %-30s %-20d%n",
+                    rs.getInt("eid"),
+                    rs.getString("name"),
+                    rs.getInt("num")
+                );
+            }
+        }
+    }
+
+    private static void r8_2_resales_report_average_markup(Connection conn, Scanner scanner) throws SQLException {
+        try (Statement stmt = conn.createStatement();
+            ResultSet rs = stmt.executeQuery(
+                "SELECT Events.eid, Events.name, AVG(Listings.price - Tickets.face_value) AS markup " +
+                "FROM Listings JOIN Tickets ON Listings.tid = Tickets.tid " +
+                "              JOIN Orders ON Tickets.oid = Orders.oid " +
+                "              JOIN Performances ON Orders.pid = Performances.pid " +
+                "              JOIN Events ON Performances.eid = Events.eid " +
+                "GROUP BY Events.eid, Events.name " +
+                "ORDER BY markup DESC"
+            )) {
+
+            System.out.printf(
+                "%-10s %-30s %-20s%n",
+                "EID", "Event name", "Average markup"
+            );
+            System.out.println("-".repeat(60));
+
+            while (rs.next()) {
+                System.out.printf(
+                    "%-10d %-30s %-20s%n",
+                    rs.getInt("eid"),
+                    rs.getString("name"),
+                    rs.getBigDecimal("markup")
+                );
+            }
+        }
+    }
+
+    private static void r8_3_resales_report_fraction(Connection conn, Scanner scanner) throws SQLException {
+        try (Statement stmt = conn.createStatement();
+            ResultSet rs = stmt.executeQuery(
+                "SELECT Events.eid, Events.name, " +
+                "       1.0 * SUM(" +
+                "           CASE " +
+                "               WHEN Listings.price = " +
+                "                    ROUND(Tickets.face_value * Events.resale_cap / 100, 2) " +
+                "               THEN 1 " +
+                "               ELSE 0 " +
+                "           END" +
+                "       ) / COUNT(Listings.lid) AS fraction_at_cap " +
+                "FROM Listings JOIN Tickets ON Listings.tid = Tickets.tid " +
+                "              JOIN Orders ON Tickets.oid = Orders.oid " +
+                "              JOIN Performances ON Orders.pid = Performances.pid " +
+                "              JOIN Events ON Performances.eid = Events.eid " +
+                "GROUP BY Events.eid, Events.name " +
+                "ORDER BY fraction_at_cap DESC"
+            )) {
+
+            System.out.printf(
+                "%-10s %-30s %-20s%n",
+                "EID", "Event name", "Fraction at cap"
+            );
+            System.out.println("-".repeat(60));
+
+            while (rs.next()) {
+                System.out.printf(
+                    "%-10d %-30s %-20s%n",
+                    rs.getInt("eid"),
+                    rs.getString("name"),
+                    rs.getBigDecimal("fraction_at_cap")
+                );
+            }
+        }
+    }
+
+    private static void r8_4_resales_report_top_10(Connection conn, Scanner scanner) throws SQLException {
+        System.out.print("Enter the start datetime: YYYY-MM-DD HH:MM:SS\n");
+        String start_s = scanner.nextLine();
+        System.out.print("Enter the end datetime: YYYY-MM-DD HH:MM:SS\n");
+        String end_s = scanner.nextLine();
+
+        Timestamp start;
+        Timestamp end;
+
+        try {
+            start = Timestamp.valueOf(start_s);
+            end = Timestamp.valueOf(end_s);
+        }
+        catch (IllegalArgumentException e) {
+            System.out.println("Invalid datetime format.");
+            return;
+        }
+
+        try (PreparedStatement ps = conn.prepareStatement(
+                "SELECT Events.eid, Events.name, COUNT(Listings.lid) AS num " +
+                "FROM Listings JOIN Tickets ON Listings.tid = Tickets.tid " +
+                "              JOIN Orders ON Tickets.oid = Orders.oid " +
+                "              JOIN Performances ON Orders.pid = Performances.pid " +
+                "              JOIN Events ON Performances.eid = Events.eid " +
+                "WHERE Listings.buyer_id IS NOT NULL " +
+                "  AND Listings.trans_datetime >= ? AND Listings.trans_datetime <= ? " +
+                "GROUP BY Events.eid, Events.name " +
+                "ORDER BY num DESC " +
+                "LIMIT 10"
+            )) {
+                ps.setTimestamp(1, start);
+                ps.setTimestamp(2, end);
+
+        try (ResultSet rs = ps.executeQuery()) {
+            System.out.printf(
+                "%-10s %-30s %-20s%n",
+                "EID", "Event name", "Resale volume"
+            );
+            System.out.println("-".repeat(60));
+
+            while (rs.next()) {
+                System.out.printf(
+                    "%-10d %-30s %-20d%n",
+                    rs.getInt("eid"),
+                    rs.getString("name"),
+                    rs.getInt("num")
+                );
+            }
+        }
         }
     }
 }
