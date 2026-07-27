@@ -228,6 +228,25 @@ public class Mytix {
         }
     }
 
+    private static boolean helper_listing_available(Connection conn, int lid, int pid) throws SQLException {
+        try (PreparedStatement stmt = conn.prepareStatement(
+            "SELECT Listings.lid, Listings.seller_id, Listings.price " +
+            "FROM Listings JOIN Tickets ON Listings.tid = Tickets.tid " +
+            "              JOIN Orders ON Tickets.oid = Orders.oid " +
+            "              JOIN Performances ON Orders.pid = Performances.pid " +
+            "WHERE Listings.lid = ? AND Performances.pid = ? " +
+            "  AND Listings.withdraw_datetime IS NULL " +
+            "  AND Listings.buyer_id IS NULL")) {
+            
+            stmt.setInt(1, lid);
+            stmt.setInt(2, pid);
+
+            try (ResultSet rs = stmt.executeQuery()) {
+                return rs.next();
+            }
+        }
+    }
+
     private static boolean helper_reserved_ticket_can_cancel(Connection conn, int tid, int uid) throws SQLException {
 
         try (PreparedStatement ps = conn.prepareStatement(
@@ -444,6 +463,8 @@ public class Mytix {
             o12_list_ticket(conn, scanner);
         else if (choice.equals("13"))
             o13_withdraw_listing(conn, scanner);
+        else if (choice.equals("14"))
+            o14_purchase_listing(conn, scanner);
         else if (choice.equals("15"))
             o15_review_performance(conn, scanner);
         else
@@ -718,7 +739,7 @@ public class Mytix {
                 eid = keys.getInt(1);
                 keys.close();
 
-                System.out.print("Here are all the artist:\n");
+                System.out.print("Here are all the artists:\n");
                 try (Statement stmt = conn.createStatement();
                 ResultSet rs = stmt.executeQuery(
                     "SELECT * " +
@@ -1484,13 +1505,11 @@ public class Mytix {
         try{
             conn.setAutoCommit(false);
 
-            Timestamp now = new Timestamp(System.currentTimeMillis());
-
             String venue;
             int oid;
 
             try (PreparedStatement orderps = conn.prepareStatement(
-                "INSERT INTO Orders (uid, pid, datetime) VALUES (?, ?, ?)",
+                "INSERT INTO Orders (uid, pid, datetime) VALUES (?, ?, CURRENT_TIMESTAMP)",
                 Statement.RETURN_GENERATED_KEYS
             )) {
                 orderps.setInt(1, uid);
@@ -1703,7 +1722,7 @@ public class Mytix {
         try {
             conn.setAutoCommit(false);
 
-            try (PreparedStatement ps = conn.prepareStatement(
+            try (PreparedStatement ps = conn.prepareStatement( // cancel performance
             "UPDATE Performances " +
             "SET cancel_datetime = CURRENT_TIMESTAMP " +
             "WHERE pid = ? and cancel_datetime IS NULL"
@@ -1712,7 +1731,7 @@ public class Mytix {
                 ps.executeUpdate();
             }
 
-            try (PreparedStatement tps = conn.prepareStatement(
+            try (PreparedStatement tps = conn.prepareStatement( // cancel tickets
             "UPDATE Tickets " +
             "JOIN Orders ON Tickets.oid = Orders.oid " +
             "SET Tickets.cancel_datetime = CURRENT_TIMESTAMP " +
@@ -1720,6 +1739,17 @@ public class Mytix {
             )) {
                 tps.setInt(1, pid);
                 tps.executeUpdate();
+            }
+
+            try (PreparedStatement lps = conn.prepareStatement( // withdraw active listings
+            "UPDATE Listings JOIN Tickets ON Listings.tid = Tickets.tid " +
+            "                JOIN Orders ON Tickets.oid = Orders.oid " +
+            "                JOIN Performances ON Orders.pid = Performances.pid " +
+            "SET Listings.withdraw_datetime = CURRENT_TIMESTAMP " +
+            "WHERE Performances.pid = ? AND Listings.buyer_id IS NULL AND Listings.withdraw_datetime IS NULL"
+            )) {
+                lps.setInt(1, pid);
+                lps.executeUpdate();
                 System.out.print("Performance cancelled successfully.\n");
             }
 
@@ -2058,6 +2088,89 @@ public class Mytix {
                 System.out.print("Successfully withdrawn listing.\n");
             else
                 System.out.print("Failed to withdraw listing.\n");
+        }
+    }
+
+    private static void o14_purchase_listing(Connection conn, Scanner scanner) throws SQLException {
+        System.out.print("Enter your UID:\n");
+        int uid = Integer.parseInt(scanner.nextLine());
+        if (!helper_customer_exists(conn, uid)) {
+            System.out.print("You don't have an account yet.\n");
+            return;
+        }
+
+        System.out.print("Enter PID:\n");
+        int pid = Integer.parseInt(scanner.nextLine());
+        if (!helper_performance_exists(conn, pid)) {
+            System.out.print("Invalid PID.\n");
+            return;
+        }
+
+        try (PreparedStatement date = conn.prepareStatement(
+            "SELECT datetime " +
+            "FROM Performances " +
+            "WHERE pid = ?"
+        )) {
+            date.setInt(1, pid);
+
+            try (ResultSet rs = date.executeQuery()) {
+                rs.next();
+                Timestamp time = rs.getTimestamp("datetime");
+
+                if (!time.after(new Timestamp(System.currentTimeMillis()))) {
+                    System.out.println("Only future performances listings can be purchased.");
+                    return;
+                }
+            }
+        }
+
+        System.out.print("Here are the available listings:\n");
+
+        try (PreparedStatement lps = conn.prepareStatement(
+            "SELECT Listings.lid, Listings.seller_id, Listings.price " +
+            "FROM Listings JOIN Tickets ON Listings.tid = Tickets.tid " +
+            "              JOIN Orders ON Tickets.oid = Orders.oid " +
+            "              JOIN Performances ON Orders.pid = Performances.pid " +
+            "WHERE Performances.pid = ? " +
+            "  AND Listings.withdraw_datetime IS NULL " +
+            "  AND Listings.buyer_id IS NULL"
+        )) {
+            lps.setInt(1, pid);
+
+            try (ResultSet rs = conn.executeQuery()) {
+                System.out.printf(
+                        "%-10s %-15s %-15s%n",
+                        "LID", "Seller UID", "Price"
+                );
+                System.out.println("-".repeat(40));
+
+                while (rs.next()) {
+                    System.out.printf(
+                            "%-10d %-15d %-15s%n",
+                            rs.getInt("lid"),
+                            rs.getInt("seller_id"),
+                            rs.getBigDecimal("price")
+                    );
+                }
+            }
+        }
+
+        System.out.print("Which listing are you going to purchase?\n");
+        int lid = Integer.parseInt(scanner.nextLine());
+        if (!helper_listing_available(conn, lid, pid)) {
+            System.out.print("Invalid LID.\n");
+            return;
+        }
+
+        try (PreparedStatement ps = conn.prepareStatement(
+            "UPDATE Listings " +
+            "SET buyer_id = ?, trans_datetime = CURRENT_TIMESTAMP " +
+            "WHERE lid = ?"
+        )) {
+            ps.setInt(1, uid);
+            ps.setInt(2, lid);
+            ps.executeUpdate();
+            System.out.print("Successfully purchased lisitng.\n");
         }
     }
 
@@ -3623,6 +3736,7 @@ public class Mytix {
                 "              JOIN Orders ON Tickets.oid = Orders.oid " +
                 "              JOIN Performances ON Orders.pid = Performances.pid " +
                 "              JOIN Events ON Performances.eid = Events.eid " +
+                "WHERE Listings.buyer_id IS NOT NULL " +
                 "GROUP BY Events.eid, Events.name " +
                 "ORDER BY markup DESC"
             )) {
@@ -3660,6 +3774,7 @@ public class Mytix {
                 "              JOIN Orders ON Tickets.oid = Orders.oid " +
                 "              JOIN Performances ON Orders.pid = Performances.pid " +
                 "              JOIN Events ON Performances.eid = Events.eid " +
+                "WHERE Listings.buyer_id IS NOT NULL " +
                 "GROUP BY Events.eid, Events.name " +
                 "ORDER BY fraction_at_cap DESC"
             )) {
