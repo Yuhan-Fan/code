@@ -471,7 +471,9 @@ public class Mytix {
         System.out.print("1 Search for upcoming performances by latitude & longitude.\n");
         System.out.print("2 Search for upcoming performances by postal code.\n");
         System.out.print("3 Search for upcoming performances by address.\n");
-        System.out.print("4 Search for upcoming performances by date range & available ticket number.\n");
+        System.out.print("4.1 Temporal and availability refinement of 1.\n");
+        System.out.print("4.2                                         2.\n");
+        System.out.print("4.3                                         3.\n");
         System.out.print("5 Search by filters.\n");
         System.out.print("6 Seat summary of a performance.\n");
         System.out.print("Choose by entering a number.\n");
@@ -1905,7 +1907,7 @@ public class Mytix {
                 "  AND Tickets.cancel_datetime IS NULL " + // The ticket is not cancelled.
                 "  AND NOT EXISTS (SELECT * " + // The user hasn't listed the ticket, or if he listed it, he has withdrawn.
                 "                  FROM Listings " +
-                "                  WHERE Listings.tid = Tickets.tid AND Listings.seller_id = ? AND Listings.withdraw_datetime IS NULL)" +
+                "                  WHERE Listings.tid = Tickets.tid AND Listings.seller_id = ? AND Listings.withdraw_datetime IS NULL) " +
                 "ORDER BY Orders.datetime DESC"
             )) {
                 tps.setInt(1, uid);
@@ -2260,7 +2262,22 @@ public class Mytix {
             return;
         }
 
-        System.out.print("Would you like the results be ordered by distance, or cheapest available ticket price? 1/2\n");
+        System.out.printf(
+            "Enter search distance in kilometres, or press Enter to use the default %.1f km:\n",
+            DEFAULT_RADIUS
+        );
+        String distanceStr = scanner.nextLine();
+        if (distanceStr.equals(""))
+            distance = DEFAULT_RADIUS_KM;
+        else
+            distance = Double.parseDouble(distanceStr);
+
+        if (distance <= 0) {
+            System.out.println("Distance must be greater than 0.\n");
+            return;
+        }
+
+        System.out.print("Would you like the results be ordered by distance, or cheapest available ticket price ascending, or descending? 1/2/3\n");
         String order = scanner.nextLine();
 
         if (order.equals("1")) {
@@ -2268,22 +2285,26 @@ public class Mytix {
                 "SELECT Performances.pid, Events.name AS event_name, Performances.datetime, Venues.name AS venue_name " +
                 "FROM Performances JOIN Events ON Performances.eid = Events.eid " +
                 "                  JOIN Venues ON Performances.venue_name = Venues.name " +
-                "WHERE POWER(Venues.latitude - ?, 2) + POWER(Venues.longitude - ?, 2) <= POWER(?, 2) " +
+                "WHERE POWER((Venues.latitude - ?) * 111.0, 2) + " +
+                "      POWER((Venues.longitude - ?) * 111.0 * COS(RADIANS(?)), 2) <= POWER(?, 2) " +
                 "      AND Performances.datetime >= CURRENT_TIMESTAMP " +
                 "      AND Performances.cancel_datetime IS NULL " +
-                "ORDER BY POWER(Venues.latitude - ?, 2) + POWER(Venues.longitude - ?, 2) ";
+                "ORDER BY POWER((Venues.latitude - ?) * 111.0, 2) + " +
+                "         POWER((Venues.longitude - ?) * 111.0 * COS(RADIANS(?)), 2) ";
             try (PreparedStatement ps = conn.prepareStatement(sql)) {
                 ps.setDouble(1, latitude);
                 ps.setDouble(2, longitude);
-                ps.setDouble(3, DEFAULT_RADIUS);
-                ps.setDouble(4, latitude);
-                ps.setDouble(5, longitude);
+                ps.setDouble(3, latitude);
+                ps.setDouble(4, distance);
+                ps.setDouble(5, latitude);
+                ps.setDouble(6, longitude);
+                ps.setDouble(7, latitude);
 
                 try (ResultSet rs = ps.executeQuery()) {
-                    System.out.printf("%-10s %-30s %-30s %-30s%n", "PID", "Event", "Datetime", "Venue");
+                    System.out.printf("%-5s %-30s %-30s %-30s%n", "PID", "Event", "Datetime", "Venue");
                     System.out.println("-".repeat(90));
                     while (rs.next()) {
-                        System.out.printf("%-10d %-30s %-30s %-30s%n",
+                        System.out.printf("%-5d %-30s %-30s %-30s%n",
                             rs.getInt("pid"),
                             rs.getString("event_name"),
                             rs.getString("datetime"),
@@ -2293,7 +2314,7 @@ public class Mytix {
                 }
             }
         }
-        else if (order.equals("2")) {
+        else if (order.equals("2") || order.equals("3")) {
             try (Statement stmt = conn.createStatement()) {
                 stmt.executeUpdate("DROP TEMPORARY TABLE IF EXISTS Pid_price");
                 stmt.executeUpdate("DROP TEMPORARY TABLE IF EXISTS General_pid_section");
@@ -2327,10 +2348,10 @@ public class Mytix {
                 stmt.executeUpdate(
                     "CREATE TEMPORARY TABLE Reserved_pid_section AS " +
                     "SELECT Reserved_pid_section_capacity.pid, Reserved_pid_section_capacity.section_name " +
-                    "FROM Reserved_pid_section_capacity LEFT JOIN Reserved_pid_section_sold ON Reserved_pid_section_capacity.pid = Reserved_pid_section_sold.pid" +
-                    "                                                                       AND Reserved_pid_section_capacity.section_name = Reserved_pid_section_sold.section_name" +
-                    "                                   LEFT JOIN Reserved_pid_section_blocked ON Reserved_pid_section_capacity.pid = Reserved_pid_section_blocked.pid" +
-                    "                                                                       AND Reserved_pid_section_capacity.section_name = Reserved_pid_section_blocked.section_name" +
+                    "FROM Reserved_pid_section_capacity LEFT JOIN Reserved_pid_section_sold ON Reserved_pid_section_capacity.pid = Reserved_pid_section_sold.pid " +
+                    "                                                                       AND Reserved_pid_section_capacity.section_name = Reserved_pid_section_sold.section_name " +
+                    "                                   LEFT JOIN Reserved_pid_section_blocked ON Reserved_pid_section_capacity.pid = Reserved_pid_section_blocked.pid " +
+                    "                                                                       AND Reserved_pid_section_capacity.section_name = Reserved_pid_section_blocked.section_name " +
                     "WHERE IFNULL(Reserved_pid_section_sold.sold, 0) < Reserved_pid_section_capacity.capacity - IFNULL(Reserved_pid_section_blocked.blocked, 0) "
                 );
                 stmt.executeUpdate(
@@ -2365,25 +2386,28 @@ public class Mytix {
                 );
             }
 
-            String sql =
+            if (order.equals("2")) {
+                try (PreparedStatement ps = conn.prepareStatement(
                 "SELECT Performances.pid, Events.name AS event_name, Performances.datetime, Venues.name AS venue_name, Pid_price.cheapest_available_ticket AS price " +
                 "FROM Performances JOIN Events ON Performances.eid = Events.eid " +
                 "                  JOIN Venues ON Performances.venue_name = Venues.name " +
                 "                  JOIN Pid_price ON Performances.pid = Pid_price.pid " +
-                "WHERE POWER(Venues.latitude - ?, 2) + POWER(Venues.longitude - ?, 2) <= POWER(?, 2) " +
+                "WHERE POWER((Venues.latitude - ?) * 111.0, 2) + " +
+                "      POWER((Venues.longitude - ?) * 111.0 * COS(RADIANS(?)), 2) <= POWER(?, 2) " +
                 "      AND Performances.datetime >= CURRENT_TIMESTAMP " +
                 "      AND Performances.cancel_datetime IS NULL " +
-                "ORDER BY Pid_price.cheapest_available_ticket ";
-            try (PreparedStatement ps = conn.prepareStatement(sql)) {
+                "ORDER BY Pid_price.cheapest_available_ticket ASC"
+            )) {
                 ps.setDouble(1, latitude);
                 ps.setDouble(2, longitude);
-                ps.setDouble(3, DEFAULT_RADIUS);
+                ps.setDouble(3, latitude);
+                ps.setDouble(4, distance);
 
                 try (ResultSet rs = ps.executeQuery()) {
-                    System.out.printf("%-10s %-30s %-30s %-30s %-30s%n", "PID", "Event", "Datetime", "Venue", "Cheapest available ticket price");
+                    System.out.printf("%-5s %-30s %-25s %-30s %-10s%n", "PID", "Event", "Datetime", "Venue", "Cheapest available ticket price");
                     System.out.println("-".repeat(130));
                     while (rs.next()) {
-                        System.out.printf("%-10d %-30s %-30s %-30s %-30s%n",
+                        System.out.printf("%-5d %-30s %-25s %-30s %-10s%n",
                             rs.getInt("pid"),
                             rs.getString("event_name"),
                             rs.getString("datetime"),
@@ -2392,6 +2416,39 @@ public class Mytix {
                         );
                     }
                 }
+            }
+            }
+            else {
+                try (PreparedStatement ps = conn.prepareStatement(
+                "SELECT Performances.pid, Events.name AS event_name, Performances.datetime, Venues.name AS venue_name, Pid_price.cheapest_available_ticket AS price " +
+                "FROM Performances JOIN Events ON Performances.eid = Events.eid " +
+                "                  JOIN Venues ON Performances.venue_name = Venues.name " +
+                "                  JOIN Pid_price ON Performances.pid = Pid_price.pid " +
+                "WHERE POWER((Venues.latitude - ?) * 111.0, 2) + " +
+                "      POWER((Venues.longitude - ?) * 111.0 * COS(RADIANS(?)), 2) <= POWER(?, 2) " +
+                "      AND Performances.datetime >= CURRENT_TIMESTAMP " +
+                "      AND Performances.cancel_datetime IS NULL " +
+                "ORDER BY Pid_price.cheapest_available_ticket DESC"
+            )) {
+                ps.setDouble(1, latitude);
+                ps.setDouble(2, longitude);
+                ps.setDouble(3, latitude);
+                ps.setDouble(4, distance);
+
+                try (ResultSet rs = ps.executeQuery()) {
+                    System.out.printf("%-5s %-30s %-25s %-30s %-10s%n", "PID", "Event", "Datetime", "Venue", "Cheapest available ticket price");
+                    System.out.println("-".repeat(130));
+                    while (rs.next()) {
+                        System.out.printf("%-5d %-30s %-25s %-30s %-10s%n",
+                            rs.getInt("pid"),
+                            rs.getString("event_name"),
+                            rs.getString("datetime"),
+                            rs.getString("venue_name"),
+                            rs.getBigDecimal("price")
+                        );
+                    }
+                }
+            }
             }
         }
         else {
@@ -2404,7 +2461,7 @@ public class Mytix {
         String postal = scanner.nextLine();
 
         postal = postal.replace(" ", "").toUpperCase();
-        if (!postal.matches("[A-Za-z0-9]{6}")) {
+        if (!postal.matches("[A-Za-z0-9]{5,6}")) {
             System.out.println("Postal doesn't have right format.\n");
             return;
         }
@@ -2430,24 +2487,49 @@ public class Mytix {
                     );
                 }
             }
-        } catch (SQLException e) {
-            System.out.println("Query error (q2): " + e.getMessage());
         }
     }
 
     private static void q3_search_performances_by_address(Connection conn, Scanner scanner) throws SQLException {
-        System.out.print("Enter address:");
-        String address = scanner.nextLine();
+        System.out.print("Enter country:");
+        String country = scanner.nextLine();
+        System.out.print("Enter city:");
+        String city = scanner.nextLine();
+        System.out.print("Enter postal code:");
+        String postal = scanner.nextLine();
+
+        postal = postal.replace(" ", "").toUpperCase();
+
+        System.out.print("Here are the venues:\n");
+
+        try(PreparedStatement vps = conn.prepareStatement(
+            "SELECT name " +
+            "FROM Venues " +
+            "WHERE country = ? AND city = ? AND postal_code = ?"
+        )) {
+            vps.setString(1, country);
+            vps.setString(2, city);
+            vps.setString(3, postal);
+            try (ResultSet vrs = vps.executeQuery()) {
+                while (vrs.next()) {
+                    System.out.printf("%s", vrs.getString("name"));
+                }
+            }
+        }
+
+        System.out.print("Here are the performances:\n");
 
         String sql =
             "SELECT Performances.pid, Events.name AS event_name, Performances.datetime, Venues.name AS venue_name " +
             "FROM Performances JOIN Events ON Performances.eid = Events.eid " +
             "                  JOIN Venues ON Performances.venue_name = Venues.name " +
-            "WHERE Venues.address = ? " +
+            "WHERE Venues.country = ? AND Venues.city = ? AND Venues.postal_code = ? " +
             "      AND Performances.cancel_datetime IS NULL " +
             "      AND Performances.datetime >= CURRENT_TIMESTAMP ";
         try (PreparedStatement ps = conn.prepareStatement(sql)) {
-            ps.setString(1, address);
+            ps.setString(1, country);
+            ps.setString(2, city);
+            ps.setString(3, postal);
             try (ResultSet rs = ps.executeQuery()) {
                 System.out.printf("%-10s %-30s %-30s %-30s%n", "PID", "Event", "Datetime", "Venue");
                 System.out.println("-".repeat(90));
@@ -2460,12 +2542,10 @@ public class Mytix {
                     );
                 }
             }
-        } catch (SQLException e) {
-            System.out.println("Query error (q3): " + e.getMessage());
         }
     }
 
-    private static void q4_search_date_range_available_tickets(Connection conn, Scanner scanner) throws SQLException {
+    private static void q4_refine_q1(Connection conn, Scanner scanner) throws SQLException {
         System.out.print("Enter start datetime: YYYY-MM-DD HH:MM:SS");
         String start = scanner.nextLine();
         System.out.print("Enter end datetime: YYYY-MM-DD HH:MM:SS");
@@ -2537,8 +2617,156 @@ public class Mytix {
                     );
                 }
             }
-        } catch (SQLException e) {
-            System.out.println("Query error (q4): " + e.getMessage());
+        }
+    }
+
+    private static void q4_refine_q2(Connection conn, Scanner scanner) throws SQLException {
+        System.out.print("Enter start datetime: YYYY-MM-DD HH:MM:SS");
+        String start = scanner.nextLine();
+        System.out.print("Enter end datetime: YYYY-MM-DD HH:MM:SS");
+        String end = scanner.nextLine();
+        System.out.print("Enter availability:");
+        int available = Integer.parseInt(scanner.nextLine());
+
+        try (Statement stmt = conn.createStatement()) {
+            stmt.executeUpdate("DROP TEMPORARY TABLE IF EXISTS Sold_table");
+            stmt.executeUpdate("DROP TEMPORARY TABLE IF EXISTS Reserved_capacity_table");
+            stmt.executeUpdate("DROP TEMPORARY TABLE IF EXISTS General_capacity_table");
+            stmt.executeUpdate("DROP TEMPORARY TABLE IF EXISTS Reserved_blocked_table");
+
+            stmt.executeUpdate(
+                "CREATE TEMPORARY TABLE Sold_table AS " +
+                "SELECT Orders.pid, COUNT(*) AS sold " +
+                "FROM Orders JOIN Tickets ON Orders.oid = Tickets.oid " +
+                "WHERE Tickets.cancel_datetime IS NULL " +
+                "GROUP BY Orders.pid"
+            );
+
+            stmt.executeUpdate(
+                "CREATE TEMPORARY TABLE Reserved_capacity_table AS " +
+                "SELECT Performances.pid, COUNT(*) AS reserved_capacity " +
+                "FROM Performances JOIN Seats ON Performances.venue_name = Seats.venue_name " +
+                "GROUP BY Performances.pid"
+            );
+
+            stmt.executeUpdate(
+                "CREATE TEMPORARY TABLE General_capacity_table AS " +
+                "SELECT Performances.pid, SUM(General_sections.total_capacity) AS general_capacity " +
+                "FROM Performances JOIN General_sections ON Performances.venue_name = General_sections.venue_name " +
+                "GROUP BY Performances.pid"
+            );
+
+            stmt.executeUpdate(
+                "CREATE TEMPORARY TABLE Reserved_blocked_table AS " +
+                "SELECT Performances.pid, COUNT(*) AS blocked " +
+                "FROM Performances JOIN Block ON Performances.pid = Block.pid " +
+                "GROUP BY Performances.pid"
+            );
+        }
+
+        String sql =
+            "SELECT Performances.pid, Events.name AS event_name, Performances.datetime, Venues.name AS venue_name " +
+            "FROM Performances JOIN Events ON Performances.eid = Events.eid " +
+            "                 JOIN Venues ON Performances.venue_name = Venues.name " +
+            "                 LEFT JOIN Reserved_capacity_table ON Performances.pid = Reserved_capacity_table.pid " +
+            "                 LEFT JOIN General_capacity_table ON Performances.pid = General_capacity_table.pid " +
+            "                 LEFT JOIN Sold_table ON Performances.pid = Sold_table.pid " +
+            "                 LEFT JOIN Reserved_blocked_table ON Performances.pid = Reserved_blocked_table.pid " +
+            "WHERE Performances.datetime BETWEEN ? AND ? " +
+            "      AND Performances.cancel_datetime IS NULL " +
+            "  AND IFNULL(Reserved_capacity_table.reserved_capacity, 0) + IFNULL(General_capacity_table.general_capacity, 0) - IFNULL(Sold_table.sold, 0) - IFNULL(Reserved_blocked_table.blocked, 0) >= ?";
+
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, start);
+            ps.setString(2, end);
+            ps.setInt(3, available);
+            try (ResultSet rs = ps.executeQuery()) {
+                System.out.printf("%-10s %-30s %-30s %-30s%n", "PID", "Event", "Datetime", "Venue");
+                System.out.println("-".repeat(90));
+                while (rs.next()) {
+                    System.out.printf("%-10d %-30s %-30s %-30s%n",
+                        rs.getInt("pid"),
+                        rs.getString("event_name"),
+                        rs.getString("datetime"),
+                        rs.getString("venue_name")
+                    );
+                }
+            }
+        }
+    }
+
+    private static void q4_refine_q3(Connection conn, Scanner scanner) throws SQLException {
+        System.out.print("Enter start datetime: YYYY-MM-DD HH:MM:SS");
+        String start = scanner.nextLine();
+        System.out.print("Enter end datetime: YYYY-MM-DD HH:MM:SS");
+        String end = scanner.nextLine();
+        System.out.print("Enter availability:");
+        int available = Integer.parseInt(scanner.nextLine());
+
+        try (Statement stmt = conn.createStatement()) {
+            stmt.executeUpdate("DROP TEMPORARY TABLE IF EXISTS Sold_table");
+            stmt.executeUpdate("DROP TEMPORARY TABLE IF EXISTS Reserved_capacity_table");
+            stmt.executeUpdate("DROP TEMPORARY TABLE IF EXISTS General_capacity_table");
+            stmt.executeUpdate("DROP TEMPORARY TABLE IF EXISTS Reserved_blocked_table");
+
+            stmt.executeUpdate(
+                "CREATE TEMPORARY TABLE Sold_table AS " +
+                "SELECT Orders.pid, COUNT(*) AS sold " +
+                "FROM Orders JOIN Tickets ON Orders.oid = Tickets.oid " +
+                "WHERE Tickets.cancel_datetime IS NULL " +
+                "GROUP BY Orders.pid"
+            );
+
+            stmt.executeUpdate(
+                "CREATE TEMPORARY TABLE Reserved_capacity_table AS " +
+                "SELECT Performances.pid, COUNT(*) AS reserved_capacity " +
+                "FROM Performances JOIN Seats ON Performances.venue_name = Seats.venue_name " +
+                "GROUP BY Performances.pid"
+            );
+
+            stmt.executeUpdate(
+                "CREATE TEMPORARY TABLE General_capacity_table AS " +
+                "SELECT Performances.pid, SUM(General_sections.total_capacity) AS general_capacity " +
+                "FROM Performances JOIN General_sections ON Performances.venue_name = General_sections.venue_name " +
+                "GROUP BY Performances.pid"
+            );
+
+            stmt.executeUpdate(
+                "CREATE TEMPORARY TABLE Reserved_blocked_table AS " +
+                "SELECT Performances.pid, COUNT(*) AS blocked " +
+                "FROM Performances JOIN Block ON Performances.pid = Block.pid " +
+                "GROUP BY Performances.pid"
+            );
+        }
+
+        String sql =
+            "SELECT Performances.pid, Events.name AS event_name, Performances.datetime, Venues.name AS venue_name " +
+            "FROM Performances JOIN Events ON Performances.eid = Events.eid " +
+            "                 JOIN Venues ON Performances.venue_name = Venues.name " +
+            "                 LEFT JOIN Reserved_capacity_table ON Performances.pid = Reserved_capacity_table.pid " +
+            "                 LEFT JOIN General_capacity_table ON Performances.pid = General_capacity_table.pid " +
+            "                 LEFT JOIN Sold_table ON Performances.pid = Sold_table.pid " +
+            "                 LEFT JOIN Reserved_blocked_table ON Performances.pid = Reserved_blocked_table.pid " +
+            "WHERE Performances.datetime BETWEEN ? AND ? " +
+            "      AND Performances.cancel_datetime IS NULL " +
+            "  AND IFNULL(Reserved_capacity_table.reserved_capacity, 0) + IFNULL(General_capacity_table.general_capacity, 0) - IFNULL(Sold_table.sold, 0) - IFNULL(Reserved_blocked_table.blocked, 0) >= ?";
+
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, start);
+            ps.setString(2, end);
+            ps.setInt(3, available);
+            try (ResultSet rs = ps.executeQuery()) {
+                System.out.printf("%-10s %-30s %-30s %-30s%n", "PID", "Event", "Datetime", "Venue");
+                System.out.println("-".repeat(90));
+                while (rs.next()) {
+                    System.out.printf("%-10d %-30s %-30s %-30s%n",
+                        rs.getInt("pid"),
+                        rs.getString("event_name"),
+                        rs.getString("datetime"),
+                        rs.getString("venue_name")
+                    );
+                }
+            }
         }
     }
 
