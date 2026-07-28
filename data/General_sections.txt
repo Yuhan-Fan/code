@@ -1,0 +1,6 @@
+name	venue_name	total_capacity
+Main Floor	HISTORY	1800
+Mezzanine GA	HISTORY	300
+Main Floor	The Anthem	3500
+Main Floor	Thalia Hall	500
+Main Floor	Howard Theatre	700

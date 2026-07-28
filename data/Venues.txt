@@ -1,0 +1,9 @@
+name	latitude	longitude	postal_code	city	country
+HISTORY	43.666820	-79.315708	M4L1G5	Toronto	Canada
+The Anthem	38.880070	-77.025900	20024	Washington	United States
+Thalia Hall	41.857687	-87.657278	60608	Chicago	United States
+Lincoln Theatre	38.916944	-77.028889	20009	Washington	United States
+Howard Theatre	38.915310	-77.021090	20001	Washington	United States
+Vogue Theatre	49.279790	-123.121650	V6Z1L2	Vancouver	Canada
+Burton Cummings Theatre	49.895806	-97.143611	R3B2H2	Winnipeg	Canada
+Capitol Theatre Windsor	42.317032	-83.040016	N9A5P4	Windsor	Canada

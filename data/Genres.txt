@@ -1,0 +1,90 @@
+genre	segment
+Alternative	Concerts
+Ballads/Romantic	Concerts
+Blues	Concerts
+Chanson Française	Concerts
+Children's Music	Concerts
+Classical	Concerts
+Country	Concerts
+Dance/Electronic	Concerts
+Folk	Concerts
+Hip-Hop/Rap	Concerts
+Holiday	Concerts
+Jazz	Concerts
+Latin	Concerts
+Medieval/Renaissance	Concerts
+Metal	Concerts
+New Age	Concerts
+Other	Concerts
+Pop	Concerts
+R&B	Concerts
+Reggae	Concerts
+Religious	Concerts
+Rock	Concerts
+World	Concerts
+Baseball	Sports
+Basketball	Sports
+Body Building	Sports
+Boxing	Sports
+Curling	Sports
+Equestrian	Sports
+Extreme	Sports
+Football	Sports
+Golf	Sports
+Gymnastics	Sports
+Hockey	Sports
+Ice Skating	Sports
+Lacrosse	Sports
+Martial Arts	Sports
+Miscellaneous	Sports
+Motorsports/Racing	Sports
+Rodeo	Sports
+Rugby	Sports
+Soccer	Sports
+Swimming	Sports
+Tennis	Sports
+Volleyball	Sports
+Wrestling	Sports
+Athletic Races	Sports
+Badminton	Sports
+Bandy	Sports
+Biathlon	Sports
+Cricket	Sports
+Cycling	Sports
+eSports	Sports
+Field Hockey	Sports
+Fitness	Sports
+Floorball	Sports
+Handball	Sports
+Indoor Soccer	Sports
+Netball	Sports
+Roller Derby	Sports
+Roller Hockey	Sports
+Ski Jumping	Sports
+Skiing	Sports
+Softball	Sports
+Squash	Sports
+Surfing	Sports
+Table Tennis	Sports
+Toros	Sports
+Track & Field	Sports
+Waterpolo	Sports
+Children's Theatre	Arts, Theatre & Comedy
+Circus & Specialty Acts	Arts, Theatre & Comedy
+Classical	Arts, Theatre & Comedy
+Comedy	Arts, Theatre & Comedy
+Cultural	Arts, Theatre & Comedy
+Dance	Arts, Theatre & Comedy
+Espectaculo	Arts, Theatre & Comedy
+Fashion	Arts, Theatre & Comedy
+Fine Art	Arts, Theatre & Comedy
+Magic & Illusion	Arts, Theatre & Comedy
+Miscellaneous	Arts, Theatre & Comedy
+Multimedia	Arts, Theatre & Comedy
+Music	Arts, Theatre & Comedy
+Opera	Arts, Theatre & Comedy
+Performance Art	Arts, Theatre & Comedy
+Puppetry	Arts, Theatre & Comedy
+Spectacular	Arts, Theatre & Comedy
+Theatre	Arts, Theatre & Comedy
+Variety	Arts, Theatre & Comedy

@@ -2,14 +2,8 @@ import java.sql.*;
 import java.util.Scanner;
 import java.math.BigDecimal;
 
-/**
- * Compile:  javac -cp mysql-connector-java-8.0.29.jar mytix.java
- * Run:      java  -cp .:mysql-connector-java-8.0.29.jar mytix
- * Windows:  java  -cp .;mysql-connector-java-8.0.29.jar mytix
- */
-
 class ConnectDatabase {
-    static final String URL  = "jdbc:mysql://localhost:3306/mytix";
+    static final String URL  = "jdbc:mysql://localhost:3306/mydb";
     static final String USER = "root";
     static final String PASS = "whoeverfyh";
 
@@ -30,7 +24,7 @@ public class Mytix {
             Scanner scanner = new Scanner(System.in);
 
             while (true) {
-                System.out.print("1. Operations   2. Queries   3. Reports\n");
+                System.out.print("1 Operations   2 Queries   3 Reports   4 Exit\n");
                 System.out.print("Choose by entering a number.\n");
                 String choice = scanner.nextLine();
 
@@ -40,6 +34,8 @@ public class Mytix {
                     queries(conn, scanner);
                 else if (choice.equals("3"))
                     reports(conn, scanner);
+                else if (choice.equals("4"))
+                    break;
                 else
                     System.out.print("Invalid choice.\n");
             }
@@ -786,7 +782,7 @@ public class Mytix {
                 System.out.printf("Your event is created. EID: %d\n", eid);
             }
         }
-        catch (SQLException e | RuntimeException e) {
+        catch (SQLException | RuntimeException e) {
             conn.rollback();
             throw e;
         }
@@ -1514,7 +1510,6 @@ public class Mytix {
             )) {
                 orderps.setInt(1, uid);
                 orderps.setInt(2, pid);
-                orderps.setTimestamp(3, now);
                 orderps.executeUpdate();
 
                 ResultSet keys = orderps.getGeneratedKeys();
@@ -2137,7 +2132,7 @@ public class Mytix {
         )) {
             lps.setInt(1, pid);
 
-            try (ResultSet rs = conn.executeQuery()) {
+            try (ResultSet rs = lps.executeQuery()) {
                 System.out.printf(
                         "%-10s %-15s %-15s%n",
                         "LID", "Seller UID", "Price"

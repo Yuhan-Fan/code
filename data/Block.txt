@@ -1,0 +1,175 @@
+pid	seat	row	section_name
+1	22	1	Mezzanine Reserved
+1	23	1	Mezzanine Reserved
+1	35	1	Mezzanine Reserved
+1	23	4	Mezzanine Reserved
+1	31	4	Mezzanine Reserved
+1	39	4	Mezzanine Reserved
+1	9	9	Mezzanine Reserved
+1	17	9	Mezzanine Reserved
+2	19	1	Mezzanine Reserved
+2	27	1	Mezzanine Reserved
+2	19	2	Mezzanine Reserved
+2	24	2	Mezzanine Reserved
+2	26	2	Mezzanine Reserved
+2	21	3	Mezzanine Reserved
+2	11	4	Mezzanine Reserved
+2	32	4	Mezzanine Reserved
+2	28	5	Mezzanine Reserved
+2	5	6	Mezzanine Reserved
+2	15	6	Mezzanine Reserved
+2	22	6	Mezzanine Reserved
+2	26	7	Mezzanine Reserved
+2	28	7	Mezzanine Reserved
+2	8	8	Mezzanine Reserved
+2	26	8	Mezzanine Reserved
+2	34	8	Mezzanine Reserved
+3	2	10	Mezzanine Reserved
+3	3	10	Mezzanine Reserved
+3	5	10	Mezzanine Reserved
+3	6	10	Mezzanine Reserved
+3	8	10	Mezzanine Reserved
+3	9	10	Mezzanine Reserved
+3	11	10	Mezzanine Reserved
+3	12	10	Mezzanine Reserved
+3	13	10	Mezzanine Reserved
+3	14	10	Mezzanine Reserved
+3	15	10	Mezzanine Reserved
+3	16	10	Mezzanine Reserved
+3	17	10	Mezzanine Reserved
+3	18	10	Mezzanine Reserved
+3	19	10	Mezzanine Reserved
+3	20	10	Mezzanine Reserved
+3	22	10	Mezzanine Reserved
+3	23	10	Mezzanine Reserved
+3	24	10	Mezzanine Reserved
+3	25	10	Mezzanine Reserved
+3	26	10	Mezzanine Reserved
+3	27	10	Mezzanine Reserved
+3	28	10	Mezzanine Reserved
+3	29	10	Mezzanine Reserved
+3	30	10	Mezzanine Reserved
+3	31	10	Mezzanine Reserved
+3	32	10	Mezzanine Reserved
+3	33	10	Mezzanine Reserved
+3	34	10	Mezzanine Reserved
+3	35	10	Mezzanine Reserved
+3	36	10	Mezzanine Reserved
+3	37	10	Mezzanine Reserved
+3	38	10	Mezzanine Reserved
+3	39	10	Mezzanine Reserved
+3	40	10	Mezzanine Reserved
+4	16	7	Balcony 1
+4	29	8	Balcony 1
+4	47	14	Balcony 1
+4	3	16	Balcony 1
+4	38	7	Balcony 2
+4	7	9	Balcony 2
+4	30	11	Balcony 2
+4	9	16	Balcony 2
+4	11	19	Balcony 2
+4	4	23	Balcony 2
+4	10	23	Balcony 2
+5	21	6	Balcony 1
+5	33	16	Balcony 1
+5	37	19	Balcony 1
+5	34	23	Balcony 1
+5	12	24	Balcony 1
+5	49	8	Balcony 2
+5	10	15	Balcony 2
+5	21	25	Balcony 2
+6	16	10	Balcony 1
+6	27	11	Balcony 1
+6	27	13	Balcony 1
+6	11	15	Balcony 1
+6	19	16	Balcony 1
+6	36	24	Balcony 1
+6	25	1	Balcony 2
+6	26	3	Balcony 2
+6	35	9	Balcony 2
+6	31	11	Balcony 2
+6	31	21	Balcony 2
+7	2	5	Opera Boxes
+7	4	2	Seated Balcony
+7	16	2	Seated Balcony
+7	1	3	Seated Balcony
+7	2	3	Seated Balcony
+7	5	3	Seated Balcony
+7	6	5	Seated Balcony
+7	3	6	Seated Balcony
+7	25	6	Seated Balcony
+7	10	7	Seated Balcony
+7	13	7	Seated Balcony
+7	4	8	Seated Balcony
+7	8	8	Seated Balcony
+7	4	10	Seated Balcony
+11	10	7	Lower Balcony
+11	24	8	Lower Balcony
+11	23	3	Orchestra
+11	25	4	Orchestra
+11	8	7	Orchestra
+11	23	10	Orchestra
+11	7	13	Orchestra
+11	1	15	Orchestra
+11	20	15	Orchestra
+11	24	19	Orchestra
+11	2	23	Orchestra
+11	19	23	Orchestra
+11	6	27	Orchestra
+11	20	27	Orchestra
+11	21	31	Orchestra
+11	5	4	Upper Balcony
+11	6	6	Upper Balcony
+13	5	3	Balcony Booths
+13	8	6	Balcony Booths
+13	10	6	Balcony Booths
+13	2	7	Balcony Booths
+13	1	10	Balcony Booths
+13	4	1	Balcony Seating
+13	3	2	Balcony Seating
+13	14	2	Balcony Seating
+13	6	3	Balcony Seating
+13	7	3	Balcony Seating
+13	2	4	Balcony Seating
+13	8	4	Balcony Seating
+13	12	4	Balcony Seating
+13	3	7	Balcony Seating
+13	16	7	Balcony Seating
+13	17	8	Balcony Seating
+13	11	9	Balcony Seating
+13	19	9	Balcony Seating
+13	3	10	Balcony Seating
+13	4	10	Balcony Seating
+16	9	5	Dress Circle
+16	6	7	Dress Circle
+16	3	13	Dress Circle
+16	4	11	Orchestra
+16	12	20	Orchestra
+16	1	24	Orchestra
+16	1	1	Upper Circle
+16	5	2	Upper Circle
+19	7	7	First Balcony
+19	2	13	First Balcony
+19	26	20	First Balcony
+19	22	2	Main Floor
+19	14	5	Main Floor
+19	2	14	Main Floor
+19	22	18	Main Floor
+19	23	19	Main Floor
+19	12	20	Main Floor
+19	21	8	Second Balcony
+19	18	12	Second Balcony
+44	10	2	Balcony
+44	1	5	Balcony
+44	4	3	Main Floor
+44	6	5	Main Floor
+44	3	6	Main Floor
+44	9	6	Main Floor
+44	22	6	Main Floor
+44	5	7	Main Floor
+44	16	7	Main Floor
+44	1	15	Main Floor
+44	17	17	Main Floor
+44	4	18	Main Floor
+44	16	18	Main Floor
+44	25	20	Main Floor

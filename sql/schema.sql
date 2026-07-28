@@ -1,5 +1,5 @@
 DROP TABLE IF EXISTS Listings;
-DROP TABLE IF EXISTS Block;
+DROP TABLE IF EXISTS `Block`;
 DROP TABLE IF EXISTS Section_pricetier;
 DROP TABLE IF EXISTS Review;
 DROP TABLE IF EXISTS Feature;
@@ -8,7 +8,7 @@ DROP TABLE IF EXISTS Reserved_tickets;
 DROP TABLE IF EXISTS Tickets;
 DROP TABLE IF EXISTS Orders;
 DROP TABLE IF EXISTS Seats;
-DROP TABLE IF EXISTS Rows;
+DROP TABLE IF EXISTS `Rows`;
 DROP TABLE IF EXISTS General_sections;
 DROP TABLE IF EXISTS Reserved_sections;
 DROP TABLE IF EXISTS Sections;
@@ -55,8 +55,9 @@ CREATE TABLE Organizers (
 );
 
 CREATE TABLE Genres (
-    genre          VARCHAR(255)     PRIMARY KEY,
+    genre          VARCHAR(255)     NOT NULL,
     segment        VARCHAR(255)     NOT NULL,
+    PRIMARY KEY (genre, segment),
     FOREIGN KEY (segment) REFERENCES Segments(segment)
         ON UPDATE CASCADE
 );
@@ -76,9 +77,10 @@ CREATE TABLE Events (
     resale_cap     DECIMAL(5, 2)    NOT NULL,
     uid            INT              NOT NULL,
     genre          VARCHAR(255)     NOT NULL,
+    segment        VARCHAR(255)     NOT NULL,
     FOREIGN KEY (uid) REFERENCES Organizers(uid)
         ON UPDATE CASCADE,
-    FOREIGN KEY (genre) REFERENCES Genres(genre)
+    FOREIGN KEY (genre, segment) REFERENCES Genres(genre, segment)
         ON UPDATE CASCADE
 );
 
@@ -128,22 +130,22 @@ CREATE TABLE General_sections (
         ON UPDATE CASCADE
 );
 
-CREATE TABLE Rows (
-    row            INT              NOT NULL,
+CREATE TABLE `Rows` (
+    `row`          INT              NOT NULL,
     section_name   VARCHAR(255)     NOT NULL,
     venue_name     VARCHAR(255)     NOT NULL,
-    PRIMARY KEY (row, section_name, venue_name),
+    PRIMARY KEY (`row`, section_name, venue_name),
     FOREIGN KEY (section_name, venue_name) REFERENCES Reserved_sections(name, venue_name)
         ON UPDATE CASCADE
 );
 
 CREATE TABLE Seats (
     seat           INT              NOT NULL,
-    row            INT              NOT NULL,
+    `row`          INT              NOT NULL,
     section_name   VARCHAR(255)     NOT NULL,
     venue_name     VARCHAR(255)     NOT NULL,
-    PRIMARY KEY (seat, row, section_name, venue_name),
-    FOREIGN KEY (row, section_name, venue_name) REFERENCES Rows(row, section_name, venue_name)
+    PRIMARY KEY (seat, `row`, section_name, venue_name),
+    FOREIGN KEY (`row`, section_name, venue_name) REFERENCES `Rows`(`row`, section_name, venue_name)
         ON UPDATE CASCADE
 );
 
@@ -170,12 +172,12 @@ CREATE TABLE Tickets (
 CREATE TABLE Reserved_tickets (
     tid            INT              PRIMARY KEY,
     seat           INT              NOT NULL,
-    row            INT              NOT NULL,
+    `row`          INT              NOT NULL,
     section_name   VARCHAR(255)     NOT NULL,
     venue_name     VARCHAR(255)     NOT NULL,
     FOREIGN KEY (tid) REFERENCES Tickets(tid)
         ON UPDATE CASCADE,
-    FOREIGN KEY (seat, row, section_name, venue_name) REFERENCES Seats(seat, row, section_name, venue_name)
+    FOREIGN KEY (seat, `row`, section_name, venue_name) REFERENCES Seats(seat, `row`, section_name, venue_name)
         ON UPDATE CASCADE
 );
 
@@ -224,12 +226,12 @@ CREATE TABLE Section_pricetier (
         ON UPDATE CASCADE
 );
 
-CREATE TABLE Block (
+CREATE TABLE `Block` (
     pid            INT              NOT NULL,
     seat           INT              NOT NULL,
-    row            INT              NOT NULL,
+    `row`          INT              NOT NULL,
     section_name   VARCHAR(255)     NOT NULL,
-    PRIMARY KEY (pid, seat, row, section_name),
+    PRIMARY KEY (pid, seat, `row`, section_name),
     FOREIGN KEY (pid) REFERENCES Performances(pid)
         ON UPDATE CASCADE
 );
@@ -247,8 +249,7 @@ CREATE TABLE Listings (
         ON UPDATE CASCADE,
     FOREIGN KEY (seller_id) REFERENCES Customers(uid)
         ON UPDATE CASCADE,
-    FOREIGN KEY (buyer_id) REFERENCES Customers(uid)
-        ON UPDATE CASCADE,
+    FOREIGN KEY (buyer_id) REFERENCES Customers(uid),
     CHECK (
         (buyer_id IS NOT NULL AND trans_datetime IS NOT NULL AND withdraw_datetime IS NULL)
         OR (buyer_id IS NULL AND trans_datetime IS NULL)

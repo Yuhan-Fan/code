@@ -1,0 +1,174 @@
+section_name	pid	pricetier_name
+Main Floor	1	Standard
+Mezzanine GA	1	Standard
+Mezzanine Reserved	1	VIP
+Main Floor	2	Standard
+Mezzanine GA	2	Standard
+Mezzanine Reserved	2	VIP
+Main Floor	3	Standard
+Mezzanine GA	3	Standard
+Mezzanine Reserved	3	VIP
+Balcony 1	4	VIP
+Balcony 2	4	Premium
+Main Floor	4	Standard
+Balcony 1	5	VIP
+Balcony 2	5	Standard
+Main Floor	5	Budget
+Balcony 1	6	VIP
+Balcony 2	6	Standard
+Main Floor	6	Standard
+Main Floor	7	Standard
+Opera Boxes	7	VIP
+Seated Balcony	7	Standard
+Main Floor	8	Standard
+Opera Boxes	8	VIP
+Seated Balcony	8	Standard
+Main Floor	9	Standard
+Opera Boxes	9	VIP
+Seated Balcony	9	Standard
+Lower Balcony	10	Standard
+Orchestra	10	VIP
+Upper Balcony	10	Budget
+Lower Balcony	11	Standard
+Orchestra	11	VIP
+Upper Balcony	11	Standard
+Lower Balcony	12	Standard
+Orchestra	12	VIP
+Upper Balcony	12	Standard
+Balcony Booths	13	Standard
+Balcony Seating	13	Standard
+Main Floor	13	Standard
+Balcony Booths	14	Standard
+Balcony Seating	14	Standard
+Main Floor	14	Standard
+Balcony Booths	15	Standard
+Balcony Seating	15	Standard
+Main Floor	15	Budget
+Dress Circle	16	VIP
+Orchestra	16	VIP
+Upper Circle	16	Standard
+Dress Circle	17	VIP
+Orchestra	17	VIP
+Upper Circle	17	Standard
+Dress Circle	18	VIP
+Orchestra	18	VIP
+Upper Circle	18	Standard
+First Balcony	19	Standard
+Main Floor	19	Standard
+Second Balcony	19	Standard
+First Balcony	20	Standard
+Main Floor	20	Premium
+Second Balcony	20	Standard
+First Balcony	21	Standard
+Main Floor	21	Standard
+Second Balcony	21	Standard
+Balcony	22	Standard
+Main Floor	22	Standard
+Balcony	23	Standard
+Main Floor	23	Standard
+Balcony	24	Standard
+Main Floor	24	Premium
+Main Floor	25	Standard
+Mezzanine GA	25	Standard
+Mezzanine Reserved	25	VIP
+Main Floor	26	Standard
+Mezzanine GA	26	Standard
+Mezzanine Reserved	26	VIP
+Main Floor	27	Standard
+Mezzanine GA	27	Standard
+Mezzanine Reserved	27	VIP
+Balcony 1	28	VIP
+Balcony 2	28	Premium
+Main Floor	28	Standard
+Balcony 1	29	VIP
+Balcony 2	29	Standard
+Main Floor	29	Standard
+Balcony 1	30	VIP
+Balcony 2	30	Standard
+Main Floor	30	Budget
+Main Floor	31	Standard
+Opera Boxes	31	VIP
+Seated Balcony	31	Standard
+Lower Balcony	32	Standard
+Orchestra	32	VIP
+Upper Balcony	32	Standard
+Balcony Booths	33	Standard
+Balcony Seating	33	Standard
+Main Floor	33	Standard
+Dress Circle	34	VIP
+Orchestra	34	VIP
+Upper Circle	34	Standard
+First Balcony	35	Standard
+Main Floor	35	Standard
+Second Balcony	35	Budget
+Balcony	36	Standard
+Main Floor	36	Premium
+Main Floor	37	Standard
+Mezzanine GA	37	Standard
+Mezzanine Reserved	37	VIP
+Balcony 1	38	VIP
+Balcony 2	38	Standard
+Main Floor	38	Standard
+Main Floor	39	Standard
+Opera Boxes	39	VIP
+Seated Balcony	39	Standard
+Lower Balcony	40	Standard
+Orchestra	40	VIP
+Upper Balcony	40	Standard
+Balcony Booths	41	Standard
+Balcony Seating	41	Standard
+Main Floor	41	Standard
+Dress Circle	42	VIP
+Orchestra	42	VIP
+Upper Circle	42	Standard
+First Balcony	43	Standard
+Main Floor	43	Standard
+Second Balcony	43	Standard
+Balcony	44	Standard
+Main Floor	44	Premium
+Main Floor	45	Standard
+Mezzanine GA	45	Standard
+Mezzanine Reserved	45	VIP
+Balcony 1	46	VIP
+Balcony 2	46	Standard
+Main Floor	46	Standard
+Main Floor	47	Standard
+Opera Boxes	47	VIP
+Seated Balcony	47	Standard
+Lower Balcony	48	Standard
+Orchestra	48	VIP
+Upper Balcony	48	Standard
+Balcony Booths	49	Standard
+Balcony Seating	49	Standard
+Main Floor	49	Standard
+Dress Circle	50	VIP
+Orchestra	50	VIP
+Upper Circle	50	Budget
+First Balcony	51	Standard
+Main Floor	51	Standard
+Second Balcony	51	Standard
+Balcony	52	Standard
+Main Floor	52	Premium
+Main Floor	53	Standard
+Mezzanine GA	53	Standard
+Mezzanine Reserved	53	VIP
+Balcony 1	54	VIP
+Balcony 2	54	Standard
+Main Floor	54	Standard
+Main Floor	55	Standard
+Opera Boxes	55	VIP
+Seated Balcony	55	Budget
+Dress Circle	56	VIP
+Orchestra	56	VIP
+Upper Circle	56	Standard
+Balcony	57	Standard
+Main Floor	57	Standard
+Lower Balcony	58	Standard
+Orchestra	58	VIP
+Upper Balcony	58	Standard
+First Balcony	59	Standard
+Main Floor	59	Standard
+Second Balcony	59	Standard
+Balcony Booths	60	Standard
+Balcony Seating	60	Premium
+Main Floor	60	Standard

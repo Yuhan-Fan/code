@@ -1,0 +1,19 @@
+name	venue_name
+Mezzanine Reserved	HISTORY
+Balcony 1	The Anthem
+Balcony 2	The Anthem
+Opera Boxes	Thalia Hall
+Seated Balcony	Thalia Hall
+Lower Balcony	Lincoln Theatre
+Orchestra	Lincoln Theatre
+Upper Balcony	Lincoln Theatre
+Balcony Booths	Howard Theatre
+Balcony Seating	Howard Theatre
+Dress Circle	Vogue Theatre
+Orchestra	Vogue Theatre
+Upper Circle	Vogue Theatre
+First Balcony	Burton Cummings Theatre
+Main Floor	Burton Cummings Theatre
+Second Balcony	Burton Cummings Theatre
+Balcony	Capitol Theatre Windsor
+Main Floor	Capitol Theatre Windsor

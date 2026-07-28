@@ -1,0 +1,287 @@
+row	section_name	venue_name
+1	Mezzanine Reserved	HISTORY
+2	Mezzanine Reserved	HISTORY
+3	Mezzanine Reserved	HISTORY
+4	Mezzanine Reserved	HISTORY
+5	Mezzanine Reserved	HISTORY
+6	Mezzanine Reserved	HISTORY
+7	Mezzanine Reserved	HISTORY
+8	Mezzanine Reserved	HISTORY
+9	Mezzanine Reserved	HISTORY
+10	Mezzanine Reserved	HISTORY
+1	Balcony 1	The Anthem
+2	Balcony 1	The Anthem
+3	Balcony 1	The Anthem
+4	Balcony 1	The Anthem
+5	Balcony 1	The Anthem
+6	Balcony 1	The Anthem
+7	Balcony 1	The Anthem
+8	Balcony 1	The Anthem
+9	Balcony 1	The Anthem
+10	Balcony 1	The Anthem
+11	Balcony 1	The Anthem
+12	Balcony 1	The Anthem
+13	Balcony 1	The Anthem
+14	Balcony 1	The Anthem
+15	Balcony 1	The Anthem
+16	Balcony 1	The Anthem
+17	Balcony 1	The Anthem
+18	Balcony 1	The Anthem
+19	Balcony 1	The Anthem
+20	Balcony 1	The Anthem
+21	Balcony 1	The Anthem
+22	Balcony 1	The Anthem
+23	Balcony 1	The Anthem
+24	Balcony 1	The Anthem
+25	Balcony 1	The Anthem
+1	Balcony 2	The Anthem
+2	Balcony 2	The Anthem
+3	Balcony 2	The Anthem
+4	Balcony 2	The Anthem
+5	Balcony 2	The Anthem
+6	Balcony 2	The Anthem
+7	Balcony 2	The Anthem
+8	Balcony 2	The Anthem
+9	Balcony 2	The Anthem
+10	Balcony 2	The Anthem
+11	Balcony 2	The Anthem
+12	Balcony 2	The Anthem
+13	Balcony 2	The Anthem
+14	Balcony 2	The Anthem
+15	Balcony 2	The Anthem
+16	Balcony 2	The Anthem
+17	Balcony 2	The Anthem
+18	Balcony 2	The Anthem
+19	Balcony 2	The Anthem
+20	Balcony 2	The Anthem
+21	Balcony 2	The Anthem
+22	Balcony 2	The Anthem
+23	Balcony 2	The Anthem
+24	Balcony 2	The Anthem
+25	Balcony 2	The Anthem
+1	Opera Boxes	Thalia Hall
+2	Opera Boxes	Thalia Hall
+3	Opera Boxes	Thalia Hall
+4	Opera Boxes	Thalia Hall
+5	Opera Boxes	Thalia Hall
+1	Seated Balcony	Thalia Hall
+2	Seated Balcony	Thalia Hall
+3	Seated Balcony	Thalia Hall
+4	Seated Balcony	Thalia Hall
+5	Seated Balcony	Thalia Hall
+6	Seated Balcony	Thalia Hall
+7	Seated Balcony	Thalia Hall
+8	Seated Balcony	Thalia Hall
+9	Seated Balcony	Thalia Hall
+10	Seated Balcony	Thalia Hall
+1	Lower Balcony	Lincoln Theatre
+2	Lower Balcony	Lincoln Theatre
+3	Lower Balcony	Lincoln Theatre
+4	Lower Balcony	Lincoln Theatre
+5	Lower Balcony	Lincoln Theatre
+6	Lower Balcony	Lincoln Theatre
+7	Lower Balcony	Lincoln Theatre
+8	Lower Balcony	Lincoln Theatre
+9	Lower Balcony	Lincoln Theatre
+10	Lower Balcony	Lincoln Theatre
+1	Orchestra	Lincoln Theatre
+2	Orchestra	Lincoln Theatre
+3	Orchestra	Lincoln Theatre
+4	Orchestra	Lincoln Theatre
+5	Orchestra	Lincoln Theatre
+6	Orchestra	Lincoln Theatre
+7	Orchestra	Lincoln Theatre
+8	Orchestra	Lincoln Theatre
+9	Orchestra	Lincoln Theatre
+10	Orchestra	Lincoln Theatre
+11	Orchestra	Lincoln Theatre
+12	Orchestra	Lincoln Theatre
+13	Orchestra	Lincoln Theatre
+14	Orchestra	Lincoln Theatre
+15	Orchestra	Lincoln Theatre
+16	Orchestra	Lincoln Theatre
+17	Orchestra	Lincoln Theatre
+18	Orchestra	Lincoln Theatre
+19	Orchestra	Lincoln Theatre
+20	Orchestra	Lincoln Theatre
+21	Orchestra	Lincoln Theatre
+22	Orchestra	Lincoln Theatre
+23	Orchestra	Lincoln Theatre
+24	Orchestra	Lincoln Theatre
+25	Orchestra	Lincoln Theatre
+26	Orchestra	Lincoln Theatre
+27	Orchestra	Lincoln Theatre
+28	Orchestra	Lincoln Theatre
+29	Orchestra	Lincoln Theatre
+30	Orchestra	Lincoln Theatre
+31	Orchestra	Lincoln Theatre
+1	Upper Balcony	Lincoln Theatre
+2	Upper Balcony	Lincoln Theatre
+3	Upper Balcony	Lincoln Theatre
+4	Upper Balcony	Lincoln Theatre
+5	Upper Balcony	Lincoln Theatre
+6	Upper Balcony	Lincoln Theatre
+7	Upper Balcony	Lincoln Theatre
+8	Upper Balcony	Lincoln Theatre
+9	Upper Balcony	Lincoln Theatre
+10	Upper Balcony	Lincoln Theatre
+1	Balcony Booths	Howard Theatre
+2	Balcony Booths	Howard Theatre
+3	Balcony Booths	Howard Theatre
+4	Balcony Booths	Howard Theatre
+5	Balcony Booths	Howard Theatre
+6	Balcony Booths	Howard Theatre
+7	Balcony Booths	Howard Theatre
+8	Balcony Booths	Howard Theatre
+9	Balcony Booths	Howard Theatre
+10	Balcony Booths	Howard Theatre
+1	Balcony Seating	Howard Theatre
+2	Balcony Seating	Howard Theatre
+3	Balcony Seating	Howard Theatre
+4	Balcony Seating	Howard Theatre
+5	Balcony Seating	Howard Theatre
+6	Balcony Seating	Howard Theatre
+7	Balcony Seating	Howard Theatre
+8	Balcony Seating	Howard Theatre
+9	Balcony Seating	Howard Theatre
+10	Balcony Seating	Howard Theatre
+1	Dress Circle	Vogue Theatre
+2	Dress Circle	Vogue Theatre
+3	Dress Circle	Vogue Theatre
+4	Dress Circle	Vogue Theatre
+5	Dress Circle	Vogue Theatre
+6	Dress Circle	Vogue Theatre
+7	Dress Circle	Vogue Theatre
+8	Dress Circle	Vogue Theatre
+9	Dress Circle	Vogue Theatre
+10	Dress Circle	Vogue Theatre
+11	Dress Circle	Vogue Theatre
+12	Dress Circle	Vogue Theatre
+13	Dress Circle	Vogue Theatre
+14	Dress Circle	Vogue Theatre
+1	Orchestra	Vogue Theatre
+2	Orchestra	Vogue Theatre
+3	Orchestra	Vogue Theatre
+4	Orchestra	Vogue Theatre
+5	Orchestra	Vogue Theatre
+6	Orchestra	Vogue Theatre
+7	Orchestra	Vogue Theatre
+8	Orchestra	Vogue Theatre
+9	Orchestra	Vogue Theatre
+10	Orchestra	Vogue Theatre
+11	Orchestra	Vogue Theatre
+12	Orchestra	Vogue Theatre
+13	Orchestra	Vogue Theatre
+14	Orchestra	Vogue Theatre
+15	Orchestra	Vogue Theatre
+16	Orchestra	Vogue Theatre
+17	Orchestra	Vogue Theatre
+18	Orchestra	Vogue Theatre
+19	Orchestra	Vogue Theatre
+20	Orchestra	Vogue Theatre
+21	Orchestra	Vogue Theatre
+22	Orchestra	Vogue Theatre
+23	Orchestra	Vogue Theatre
+24	Orchestra	Vogue Theatre
+25	Orchestra	Vogue Theatre
+26	Orchestra	Vogue Theatre
+27	Orchestra	Vogue Theatre
+28	Orchestra	Vogue Theatre
+1	Upper Circle	Vogue Theatre
+2	Upper Circle	Vogue Theatre
+3	Upper Circle	Vogue Theatre
+4	Upper Circle	Vogue Theatre
+5	Upper Circle	Vogue Theatre
+6	Upper Circle	Vogue Theatre
+7	Upper Circle	Vogue Theatre
+8	Upper Circle	Vogue Theatre
+9	Upper Circle	Vogue Theatre
+10	Upper Circle	Vogue Theatre
+1	First Balcony	Burton Cummings Theatre
+2	First Balcony	Burton Cummings Theatre
+3	First Balcony	Burton Cummings Theatre
+4	First Balcony	Burton Cummings Theatre
+5	First Balcony	Burton Cummings Theatre
+6	First Balcony	Burton Cummings Theatre
+7	First Balcony	Burton Cummings Theatre
+8	First Balcony	Burton Cummings Theatre
+9	First Balcony	Burton Cummings Theatre
+10	First Balcony	Burton Cummings Theatre
+11	First Balcony	Burton Cummings Theatre
+12	First Balcony	Burton Cummings Theatre
+13	First Balcony	Burton Cummings Theatre
+14	First Balcony	Burton Cummings Theatre
+15	First Balcony	Burton Cummings Theatre
+16	First Balcony	Burton Cummings Theatre
+17	First Balcony	Burton Cummings Theatre
+18	First Balcony	Burton Cummings Theatre
+19	First Balcony	Burton Cummings Theatre
+20	First Balcony	Burton Cummings Theatre
+21	First Balcony	Burton Cummings Theatre
+1	Main Floor	Burton Cummings Theatre
+2	Main Floor	Burton Cummings Theatre
+3	Main Floor	Burton Cummings Theatre
+4	Main Floor	Burton Cummings Theatre
+5	Main Floor	Burton Cummings Theatre
+6	Main Floor	Burton Cummings Theatre
+7	Main Floor	Burton Cummings Theatre
+8	Main Floor	Burton Cummings Theatre
+9	Main Floor	Burton Cummings Theatre
+10	Main Floor	Burton Cummings Theatre
+11	Main Floor	Burton Cummings Theatre
+12	Main Floor	Burton Cummings Theatre
+13	Main Floor	Burton Cummings Theatre
+14	Main Floor	Burton Cummings Theatre
+15	Main Floor	Burton Cummings Theatre
+16	Main Floor	Burton Cummings Theatre
+17	Main Floor	Burton Cummings Theatre
+18	Main Floor	Burton Cummings Theatre
+19	Main Floor	Burton Cummings Theatre
+20	Main Floor	Burton Cummings Theatre
+21	Main Floor	Burton Cummings Theatre
+22	Main Floor	Burton Cummings Theatre
+23	Main Floor	Burton Cummings Theatre
+24	Main Floor	Burton Cummings Theatre
+25	Main Floor	Burton Cummings Theatre
+26	Main Floor	Burton Cummings Theatre
+27	Main Floor	Burton Cummings Theatre
+1	Second Balcony	Burton Cummings Theatre
+2	Second Balcony	Burton Cummings Theatre
+3	Second Balcony	Burton Cummings Theatre
+4	Second Balcony	Burton Cummings Theatre
+5	Second Balcony	Burton Cummings Theatre
+6	Second Balcony	Burton Cummings Theatre
+7	Second Balcony	Burton Cummings Theatre
+8	Second Balcony	Burton Cummings Theatre
+9	Second Balcony	Burton Cummings Theatre
+10	Second Balcony	Burton Cummings Theatre
+11	Second Balcony	Burton Cummings Theatre
+12	Second Balcony	Burton Cummings Theatre
+13	Second Balcony	Burton Cummings Theatre
+14	Second Balcony	Burton Cummings Theatre
+1	Balcony	Capitol Theatre Windsor
+2	Balcony	Capitol Theatre Windsor
+3	Balcony	Capitol Theatre Windsor
+4	Balcony	Capitol Theatre Windsor
+5	Balcony	Capitol Theatre Windsor
+6	Balcony	Capitol Theatre Windsor
+1	Main Floor	Capitol Theatre Windsor
+2	Main Floor	Capitol Theatre Windsor
+3	Main Floor	Capitol Theatre Windsor
+4	Main Floor	Capitol Theatre Windsor
+5	Main Floor	Capitol Theatre Windsor
+6	Main Floor	Capitol Theatre Windsor
+7	Main Floor	Capitol Theatre Windsor
+8	Main Floor	Capitol Theatre Windsor
+9	Main Floor	Capitol Theatre Windsor
+10	Main Floor	Capitol Theatre Windsor
+11	Main Floor	Capitol Theatre Windsor
+12	Main Floor	Capitol Theatre Windsor
+13	Main Floor	Capitol Theatre Windsor
+14	Main Floor	Capitol Theatre Windsor
+15	Main Floor	Capitol Theatre Windsor
+16	Main Floor	Capitol Theatre Windsor
+17	Main Floor	Capitol Theatre Windsor
+18	Main Floor	Capitol Theatre Windsor
+19	Main Floor	Capitol Theatre Windsor
+20	Main Floor	Capitol Theatre Windsor

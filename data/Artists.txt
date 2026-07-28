@@ -1,0 +1,16 @@
+aid	name
+1	Taylor Swift
+2	The Weeknd
+3	Shania Twain
+4	Michael Bublé
+5	Drake
+6	Celine Dion
+7	LeBron James
+8	Connor McDavid
+9	Lionel Messi
+10	Coco Gauff
+11	Kevin Hart
+12	Misty Copeland
+13	Ryan Reynolds
+14	Anthony Joshua
+15	Simone Biles
