@@ -1,5 +1,5 @@
 DROP TABLE IF EXISTS Listings;
-DROP TABLE IF EXISTS `Block`;
+DROP TABLE IF EXISTS Block;
 DROP TABLE IF EXISTS Section_pricetier;
 DROP TABLE IF EXISTS Review;
 DROP TABLE IF EXISTS Feature;
@@ -226,7 +226,7 @@ CREATE TABLE Section_pricetier (
         ON UPDATE CASCADE
 );
 
-CREATE TABLE `Block` (
+CREATE TABLE Block (
     pid            INT              NOT NULL,
     seat           INT              NOT NULL,
     `row`          INT              NOT NULL,

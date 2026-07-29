@@ -43,7 +43,7 @@ pid	eid	cancel_datetime	datetime	venue_name
 42	14	\N	2026-12-11 19:30:00	Vogue Theatre
 43	15	\N	2026-05-01 19:30:00	Burton Cummings Theatre
 44	15	\N	2026-09-04 20:00:00	Capitol Theatre Windsor
-45	15	2026-12-04 19:30:00	2026-12-11 19:30:00	HISTORY
+45	15	2026-07-26 20:24:00	2026-12-11 19:30:00	HISTORY
 46	16	\N	2026-05-05 19:30:00	The Anthem
 47	16	\N	2026-09-09 20:00:00	Thalia Hall
 48	16	\N	2026-12-17 19:30:00	Lincoln Theatre

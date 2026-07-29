@@ -1,21 +1,21 @@
 eid	name	resale_cap	uid	genre	segment
-1	Northern Lights Rock Night	20.00	1	Rock	Concerts
-2	Midnight Jazz Sessions	15.00	1	Jazz	Concerts
-3	Electric Horizon Festival	25.00	1	Dance/Electronic	Concerts
-4	Golden Country Evening	18.00	1	Country	Concerts
-5	Capital City Basketball Classic	12.00	2	Basketball	Sports
-6	Northern Hockey Challenge	10.00	2	Hockey	Sports
-7	International Soccer Showcase	15.00	2	Soccer	Sports
-8	Grand Slam Tennis Night	8.00	2	Tennis	Sports
-9	Laughing Lines Live	20.00	3	Comedy	Arts, Theatre & Comedy
-10	Modern Dance Mosaic	15.00	3	Dance	Arts, Theatre & Comedy
-11	Shadows on the Stage	10.00	3	Theatre	Arts, Theatre & Comedy
-12	Voices of the Opera	12.00	3	Opera	Arts, Theatre & Comedy
-13	Alternative Echoes	22.00	4	Alternative	Concerts
-14	Rhythm and Blues Revival	18.00	4	R&B	Concerts
-15	Field Hockey Invitational	10.00	4	Field Hockey	Sports
-16	Championship Boxing Evening	15.00	4	Boxing	Sports
-17	Puppetry After Dark	10.00	5	Puppetry	Arts, Theatre & Comedy
-18	Contemporary Performance Lab	12.00	5	Performance Art	Arts, Theatre & Comedy
-19	World Music Celebration	20.00	5	World	Concerts
-20	National Volleyball Showcase	10.00	5	Volleyball	Sports
+1	Northern Lights Rock Night	120.00	1	Rock	Concerts
+2	Midnight Jazz Sessions	115.00	1	Jazz	Concerts
+3	Electric Horizon Festival	125.00	1	Dance/Electronic	Concerts
+4	Golden Country Evening	118.00	1	Country	Concerts
+5	Capital City Basketball Classic	112.00	2	Basketball	Sports
+6	Northern Hockey Challenge	110.00	2	Hockey	Sports
+7	International Soccer Showcase	115.00	2	Soccer	Sports
+8	Grand Slam Tennis Night	108.00	2	Tennis	Sports
+9	Laughing Lines Live	120.00	3	Comedy	Arts, Theatre & Comedy
+10	Modern Dance Mosaic	115.00	3	Dance	Arts, Theatre & Comedy
+11	Shadows on the Stage	110.00	3	Theatre	Arts, Theatre & Comedy
+12	Voices of the Opera	112.00	3	Opera	Arts, Theatre & Comedy
+13	Alternative Echoes	122.00	4	Alternative	Concerts
+14	Rhythm and Blues Revival	118.00	4	R&B	Concerts
+15	Field Hockey Invitational	110.00	4	Field Hockey	Sports
+16	Championship Boxing Evening	115.00	4	Boxing	Sports
+17	Puppetry After Dark	110.00	5	Puppetry	Arts, Theatre & Comedy
+18	Contemporary Performance Lab	112.00	5	Performance Art	Arts, Theatre & Comedy
+19	World Music Celebration	120.00	5	World	Concerts
+20	National Volleyball Showcase	110.00	5	Volleyball	Sports

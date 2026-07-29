@@ -42,9 +42,20 @@ public class Mytix {
         }
     }
 
-    private static boolean helper_genre_exists(Connection conn, String genre) throws SQLException {
-        try (PreparedStatement stmt = conn.prepareStatement("SELECT COUNT(*) FROM Genres WHERE genre = ?")) {
+    private static boolean helper_genre_exists(Connection conn, String genre, String segment) throws SQLException {
+        try (PreparedStatement stmt = conn.prepareStatement("SELECT COUNT(*) FROM Genres WHERE genre = ? AND segment = ?")) {
             stmt.setString(1, genre);
+            stmt.setString(2, segment);
+
+            ResultSet rs = stmt.executeQuery();
+            rs.next();
+            return rs.getInt(1) > 0;
+        }
+    }
+
+    private static boolean helper_segment_exists(Connection conn, String segment) throws SQLException {
+        try (PreparedStatement stmt = conn.prepareStatement("SELECT COUNT(*) FROM Segments WHERE segment = ?")) {
+            stmt.setString(1, segment);
 
             ResultSet rs = stmt.executeQuery();
             rs.next();
@@ -190,7 +201,7 @@ public class Mytix {
         try (PreparedStatement stmt = conn.prepareStatement(
                 "SELECT COUNT(*) " +
                 "FROM Block " +
-                "WHERE seat = ? AND row = ? AND section_name = ? AND pid = ?")) {
+                "WHERE seat = ? AND `row` = ? AND section_name = ? AND pid = ?")) {
             stmt.setInt(1, seat);
             stmt.setInt(2, row);
             stmt.setString(3, section);
@@ -421,7 +432,7 @@ public class Mytix {
         System.out.print("8 Block or unblock seat.\n");
         System.out.print("9 Book tickets.\n");
         System.out.print("10 Cancel performance.\n");
-        System.out.print("11 Cancel.ticket.\n");
+        System.out.print("11 Cancel ticket.\n");
         System.out.print("12 List ticket.\n");
         System.out.print("13 Withdraw listing.\n");
         System.out.print("14 Purchase listing of another customer.\n");
@@ -489,8 +500,12 @@ public class Mytix {
             q2_search_performances_by_postalcode(conn, scanner);
         else if (choice.equals("3"))
             q3_search_performances_by_address(conn, scanner);
-        else if (choice.equals("4"))
-            q4_search_date_range_available_tickets(conn, scanner);
+        else if (choice.equals("4.1"))
+            q4_refine_q1(conn, scanner);
+        else if (choice.equals("4.2"))
+            q4_refine_q2(conn, scanner);
+        else if (choice.equals("4.3"))
+            q4_refine_q3(conn, scanner);
         else if (choice.equals("5"))
             q5_filters(conn, scanner);
         else if (choice.equals("6"))
@@ -708,9 +723,15 @@ public class Mytix {
             System.out.println("Resale cap must be greater than 0.\n");
             return;
         }
+        System.out.print("Enter event segment:\n");
+        String segment = scanner.nextLine();
+        if (!helper_segment_exists(conn, segment)) {
+            System.out.print("Invalid segment.\n");
+            return;
+        }
         System.out.print("Enter event genre:\n");
         String genre = scanner.nextLine();
-        if (!helper_genre_exists(conn, genre)) {
+        if (!helper_genre_exists(conn, genre, segment)) {
             System.out.print("Invalid genre.\n");
             return;
         }
@@ -720,7 +741,7 @@ public class Mytix {
         try {
             int eid;
             try (PreparedStatement ps = conn.prepareStatement(
-                "INSERT INTO Events (name, resale_cap, uid, genre) VALUES (?, ?, ?, ?)",
+                "INSERT INTO Events (name, resale_cap, uid, genre, segment) VALUES (?, ?, ?, ?, ?)",
                 Statement.RETURN_GENERATED_KEYS
             )) {
 
@@ -728,6 +749,7 @@ public class Mytix {
                 ps.setBigDecimal(2, resaleCap);
                 ps.setInt(3, uid);
                 ps.setString(4, genre);
+                ps.setString(5, segment);
                 ps.executeUpdate();
 
                 ResultSet keys = ps.getGeneratedKeys();
@@ -1239,6 +1261,30 @@ public class Mytix {
             }
         }
 
+        System.out.print("Here are the price tiers of this performance:\n");
+
+        try (PreparedStatement sections = conn.prepareStatement(
+            "SELECT Price_tiers.name, Price_tiers.price " +
+            "FROM Price_tiers JOIN Performances ON Price_tiers.pid = Performances.pid " +
+            "WHERE Performances.pid = ?"
+        )) {
+            sections.setInt(1, pid);
+
+            try (ResultSet rs = sections.executeQuery()) {
+                while (rs.next()) {
+                    System.out.printf(
+                            "%-20s %-10s%n",
+                            "Price tier name", "Price");
+                    System.out.println("-".repeat(30));
+
+                    System.out.printf(
+                            "%-20s %-10s%n",
+                            rs.getString("name"),
+                            rs.getBigDecimal("price"));
+                }
+            }
+        }
+
         System.out.print("Which price tier do you want to update? Enter the name:\n");
         String name = scanner.nextLine();
         if (!helper_pricetier_exists(conn, name, pid)) {
@@ -1408,6 +1454,25 @@ public class Mytix {
             }
         }
 
+        System.out.print("Here are the reserved sections of this performance:\n");
+
+        try (PreparedStatement sections = conn.prepareStatement(
+            "SELECT Reserved_sections.name " +
+            "FROM Reserved_sections JOIN Venues ON Reserved_sections.venue_name = Venues.name " +
+            "                       JOIN Performances ON Venues.name = Performances.venue_name " +
+            "WHERE Performances.pid = ?"
+        )) {
+            sections.setInt(1, pid);
+
+            try (ResultSet rs = sections.executeQuery()) {
+                while (rs.next()) {
+                    System.out.printf(
+                            "%-20s%n",
+                            rs.getString("name"));
+                }
+            }
+        }
+
         System.out.print("Enter section name:\n");
         String section = scanner.nextLine();
         System.out.print("Enter row number:\n");
@@ -1427,7 +1492,7 @@ public class Mytix {
                 return;
             }
             try (PreparedStatement bps2 = conn.prepareStatement(
-                "INSERT INTO Block (pid, seat, row, section_name) VALUES (?, ?, ?, ?)"
+                "INSERT INTO Block (pid, seat, `row`, section_name) VALUES (?, ?, ?, ?)"
             )) {
                 bps2.setInt(1, pid);
                 bps2.setInt(2, seat);
@@ -1442,7 +1507,7 @@ public class Mytix {
         }
         else if (choice.equals("u")) {
             try (PreparedStatement ups = conn.prepareStatement(
-                "DELETE FROM Block WHERE pid = ? AND seat = ? AND row = ? AND section_name = ?"
+                "DELETE FROM Block WHERE pid = ? AND seat = ? AND `row` = ? AND section_name = ?"
             )) {
                 ups.setInt(1, pid);
                 ups.setInt(2, seat);
@@ -1575,7 +1640,7 @@ public class Mytix {
                         keys.close();
                     }
                     try (PreparedStatement rtps = conn.prepareStatement(
-                        "INSERT INTO Reserved_tickets (tid, seat, row, section_name, venue_name) VALUES (?, ?, ?, ?, ?) "
+                        "INSERT INTO Reserved_tickets (tid, seat, `row`, section_name, venue_name) VALUES (?, ?, ?, ?, ?) "
                     )) {
                         rtps.setInt(1, tid);
                         rtps.setInt(2, seat);
@@ -1776,7 +1841,7 @@ public class Mytix {
             System.out.print("Here are the reserved tickets you booked (that are still cancellable):\n");
 
             try (PreparedStatement tps = conn.prepareStatement(
-                "SELECT Tickets.tid, Reserved_tickets.seat, Reserved_tickets.row, Reserved_tickets.section_name, Events.name AS event_name, Performances.pid " +
+                "SELECT Tickets.tid, Reserved_tickets.seat, Reserved_tickets.`row`, Reserved_tickets.section_name, Events.name AS event_name, Performances.pid " +
                 "FROM Orders JOIN Tickets on Orders.oid = Tickets.oid " +
                 "            JOIN Performances ON Orders.pid = Performances.pid " +
                 "            JOIN Events ON Performances.eid = Events.eid " +
@@ -1895,7 +1960,7 @@ public class Mytix {
             System.out.print("Here are the reserved tickets you booked:\n");
 
             try (PreparedStatement tps = conn.prepareStatement(
-                "SELECT Tickets.tid, Reserved_tickets.seat, Reserved_tickets.row, Reserved_tickets.section_name, Events.name AS event_name, Performances.pid " +
+                "SELECT Tickets.tid, Reserved_tickets.seat, Reserved_tickets.`row`, Reserved_tickets.section_name, Events.name AS event_name, Performances.pid " +
                 "FROM Orders JOIN Tickets ON Orders.oid = Tickets.oid " +
                 "            JOIN Performances ON Orders.pid = Performances.pid " +
                 "            JOIN Events ON Performances.eid = Events.eid " +
@@ -2267,8 +2332,9 @@ public class Mytix {
             DEFAULT_RADIUS
         );
         String distanceStr = scanner.nextLine();
+        double distance;
         if (distanceStr.equals(""))
-            distance = DEFAULT_RADIUS_KM;
+            distance = DEFAULT_RADIUS;
         else
             distance = Double.parseDouble(distanceStr);
 
@@ -2546,11 +2612,46 @@ public class Mytix {
     }
 
     private static void q4_refine_q1(Connection conn, Scanner scanner) throws SQLException {
-        System.out.print("Enter start datetime: YYYY-MM-DD HH:MM:SS");
+        System.out.print("Enter latitude:");
+        String latStr = scanner.nextLine();
+        double latitude = Double.parseDouble(latStr);
+        System.out.print("Enter longitude:");
+        String lonStr = scanner.nextLine();
+        double longitude = Double.parseDouble(lonStr);
+
+        if (latitude > 90 || latitude < -90) {
+            System.out.println("Latitude is out of range [-90, 90].\n");
+            return;
+        }
+        if (longitude > 180 || longitude < -180) {
+            System.out.println("Longitude is out of range [-180, 180].\n");
+            return;
+        }
+
+        System.out.printf(
+            "Enter search distance in kilometres, or press Enter to use the default %.1f km: ",
+            DEFAULT_RADIUS
+        );
+        String distanceStr = scanner.nextLine();
+        double distance;
+        if (distanceStr.equals(""))
+            distance = DEFAULT_RADIUS;
+        else
+            distance = Double.parseDouble(distanceStr);
+
+        if (distance <= 0) {
+            System.out.println("Distance must be greater than 0.\n");
+            return;
+        }
+
+        System.out.print("Would you like the results be ordered by distance, or cheapest available ticket price ascending, or descending? 1/2/3\n");
+        String order = scanner.nextLine();
+
+        System.out.print("Enter start datetime: YYYY-MM-DD HH:MM:SS ");
         String start = scanner.nextLine();
-        System.out.print("Enter end datetime: YYYY-MM-DD HH:MM:SS");
+        System.out.print("Enter end datetime: YYYY-MM-DD HH:MM:SS ");
         String end = scanner.nextLine();
-        System.out.print("Enter availability:");
+        System.out.print("Enter availability: ");
         int available = Integer.parseInt(scanner.nextLine());
 
         try (Statement stmt = conn.createStatement()) {
@@ -2589,43 +2690,225 @@ public class Mytix {
             );
         }
 
-        String sql =
-            "SELECT Performances.pid, Events.name AS event_name, Performances.datetime, Venues.name AS venue_name " +
-            "FROM Performances JOIN Events ON Performances.eid = Events.eid " +
-            "                 JOIN Venues ON Performances.venue_name = Venues.name " +
-            "                 LEFT JOIN Reserved_capacity_table ON Performances.pid = Reserved_capacity_table.pid " +
-            "                 LEFT JOIN General_capacity_table ON Performances.pid = General_capacity_table.pid " +
-            "                 LEFT JOIN Sold_table ON Performances.pid = Sold_table.pid " +
-            "                 LEFT JOIN Reserved_blocked_table ON Performances.pid = Reserved_blocked_table.pid " +
-            "WHERE Performances.datetime BETWEEN ? AND ? " +
-            "      AND Performances.cancel_datetime IS NULL " +
-            "  AND IFNULL(Reserved_capacity_table.reserved_capacity, 0) + IFNULL(General_capacity_table.general_capacity, 0) - IFNULL(Sold_table.sold, 0) - IFNULL(Reserved_blocked_table.blocked, 0) >= ?";
+        if (order.equals("1")) {
+            String sql =
+                "SELECT Performances.pid, Events.name AS event_name, Performances.datetime, Venues.name AS venue_name " +
+                "FROM Performances JOIN Events ON Performances.eid = Events.eid " +
+                "                  JOIN Venues ON Performances.venue_name = Venues.name " +
+                "                  LEFT JOIN Reserved_capacity_table ON Performances.pid = Reserved_capacity_table.pid " +
+                "                  LEFT JOIN General_capacity_table ON Performances.pid = General_capacity_table.pid " +
+                "                  LEFT JOIN Sold_table ON Performances.pid = Sold_table.pid " +
+                "                  LEFT JOIN Reserved_blocked_table ON Performances.pid = Reserved_blocked_table.pid " +
+                "WHERE POWER((Venues.latitude - ?) * 111.0, 2) + " +
+                "      POWER((Venues.longitude - ?) * 111.0 * COS(RADIANS(?)), 2) <= POWER(?, 2) " +
+                "  AND Performances.datetime BETWEEN ? AND ? " +
+                "  AND Performances.cancel_datetime IS NULL " +
+                "  AND IFNULL(Reserved_capacity_table.reserved_capacity, 0) + IFNULL(General_capacity_table.general_capacity, 0) " +
+                "      - IFNULL(Sold_table.sold, 0) - IFNULL(Reserved_blocked_table.blocked, 0) >= ? " +
+                "ORDER BY POWER((Venues.latitude - ?) * 111.0, 2) + " +
+                "         POWER((Venues.longitude - ?) * 111.0 * COS(RADIANS(?)), 2) ";
 
-        try (PreparedStatement ps = conn.prepareStatement(sql)) {
-            ps.setString(1, start);
-            ps.setString(2, end);
-            ps.setInt(3, available);
-            try (ResultSet rs = ps.executeQuery()) {
-                System.out.printf("%-10s %-30s %-30s %-30s%n", "PID", "Event", "Datetime", "Venue");
-                System.out.println("-".repeat(90));
-                while (rs.next()) {
-                    System.out.printf("%-10d %-30s %-30s %-30s%n",
-                        rs.getInt("pid"),
-                        rs.getString("event_name"),
-                        rs.getString("datetime"),
-                        rs.getString("venue_name")
-                    );
+            try (PreparedStatement ps = conn.prepareStatement(sql)) {
+                ps.setDouble(1, latitude);
+                ps.setDouble(2, longitude);
+                ps.setDouble(3, latitude);
+                ps.setDouble(4, distance);
+                ps.setString(5, start);
+                ps.setString(6, end);
+                ps.setInt(7, available);
+                ps.setDouble(8, latitude);
+                ps.setDouble(9, longitude);
+                ps.setDouble(10, latitude);
+
+                try (ResultSet rs = ps.executeQuery()) {
+                    System.out.printf("%-5s %-30s %-30s %-30s%n", "PID", "Event", "Datetime", "Venue");
+                    System.out.println("-".repeat(90));
+                    while (rs.next()) {
+                        System.out.printf("%-5d %-30s %-30s %-30s%n",
+                            rs.getInt("pid"),
+                            rs.getString("event_name"),
+                            rs.getString("datetime"),
+                            rs.getString("venue_name")
+                        );
+                    }
                 }
             }
+        }
+        else if (order.equals("2") || order.equals("3")) {
+            try (Statement stmt = conn.createStatement()) {
+                stmt.executeUpdate("DROP TEMPORARY TABLE IF EXISTS Pid_price");
+                stmt.executeUpdate("DROP TEMPORARY TABLE IF EXISTS General_pid_section");
+                stmt.executeUpdate("DROP TEMPORARY TABLE IF EXISTS General_pid_section_capacity");
+                stmt.executeUpdate("DROP TEMPORARY TABLE IF EXISTS General_pid_section_sold");
+                stmt.executeUpdate("DROP TEMPORARY TABLE IF EXISTS Reserved_pid_section");
+                stmt.executeUpdate("DROP TEMPORARY TABLE IF EXISTS Reserved_pid_section_blocked");
+                stmt.executeUpdate("DROP TEMPORARY TABLE IF EXISTS Reserved_pid_section_capacity");
+                stmt.executeUpdate("DROP TEMPORARY TABLE IF EXISTS Reserved_pid_section_sold");
+
+                stmt.executeUpdate(
+                    "CREATE TEMPORARY TABLE Reserved_pid_section_sold AS " +
+                    "SELECT Orders.pid, Reserved_tickets.section_name, COUNT(*) AS sold " +
+                    "FROM Tickets JOIN Reserved_tickets ON Tickets.tid = Reserved_tickets.tid " +
+                    "             JOIN Orders ON Tickets.oid = Orders.oid " +
+                    "WHERE Tickets.cancel_datetime IS NULL " +
+                    "GROUP BY Orders.pid, Reserved_tickets.section_name"
+                );
+                stmt.executeUpdate(
+                    "CREATE TEMPORARY TABLE Reserved_pid_section_capacity AS " +
+                    "SELECT Performances.pid, Seats.section_name, COUNT(*) AS capacity " +
+                    "FROM Performances JOIN Seats ON Performances.venue_name = Seats.venue_name " +
+                    "GROUP BY Performances.pid, Seats.section_name"
+                );
+                stmt.executeUpdate(
+                    "CREATE TEMPORARY TABLE Reserved_pid_section_blocked AS " +
+                    "SELECT Performances.pid, Block.section_name, COUNT(*) AS blocked " +
+                    "FROM Performances JOIN Block ON Performances.pid = Block.pid " +
+                    "GROUP BY Performances.pid, Block.section_name"
+                );
+                stmt.executeUpdate(
+                    "CREATE TEMPORARY TABLE Reserved_pid_section AS " +
+                    "SELECT Reserved_pid_section_capacity.pid, Reserved_pid_section_capacity.section_name " +
+                    "FROM Reserved_pid_section_capacity LEFT JOIN Reserved_pid_section_sold ON Reserved_pid_section_capacity.pid = Reserved_pid_section_sold.pid " +
+                    "                                                                       AND Reserved_pid_section_capacity.section_name = Reserved_pid_section_sold.section_name " +
+                    "                                   LEFT JOIN Reserved_pid_section_blocked ON Reserved_pid_section_capacity.pid = Reserved_pid_section_blocked.pid " +
+                    "                                                                       AND Reserved_pid_section_capacity.section_name = Reserved_pid_section_blocked.section_name " +
+                    "WHERE IFNULL(Reserved_pid_section_sold.sold, 0) < Reserved_pid_section_capacity.capacity - IFNULL(Reserved_pid_section_blocked.blocked, 0) "
+                );
+                stmt.executeUpdate(
+                    "CREATE TEMPORARY TABLE General_pid_section_sold AS " +
+                    "SELECT Orders.pid, General_tickets.section_name, COUNT(*) AS sold " +
+                    "FROM Tickets JOIN General_tickets ON Tickets.tid = General_tickets.tid " +
+                    "             JOIN Orders ON Tickets.oid = Orders.oid " +
+                    "WHERE Tickets.cancel_datetime IS NULL " +
+                    "GROUP BY Orders.pid, General_tickets.section_name "
+                );
+                stmt.executeUpdate(
+                    "CREATE TEMPORARY TABLE General_pid_section_capacity AS " +
+                    "SELECT Performances.pid, General_sections.name AS section_name, " +
+                    "       General_sections.total_capacity AS capacity " +
+                    "FROM Performances JOIN General_sections ON Performances.venue_name = General_sections.venue_name"
+                );
+                stmt.executeUpdate(
+                    "CREATE TEMPORARY TABLE General_pid_section AS " +
+                    "SELECT General_pid_section_capacity.pid, General_pid_section_capacity.section_name " +
+                    "FROM General_pid_section_capacity LEFT JOIN General_pid_section_sold ON General_pid_section_capacity.pid = General_pid_section_sold.pid " +
+                    "                                                                     AND General_pid_section_capacity.section_name = General_pid_section_sold.section_name " +
+                    "WHERE IFNULL(General_pid_section_sold.sold, 0) < General_pid_section_capacity.capacity "
+                );
+                stmt.executeUpdate(
+                    "CREATE TEMPORARY TABLE Pid_price AS " +
+                    "SELECT Available.pid, MIN(Price_tiers.price) AS cheapest_available_ticket " +
+                    "FROM ((SELECT pid, section_name FROM Reserved_pid_section) UNION (SELECT pid, section_name FROM General_pid_section)) AS Available " +
+                    "                          NATURAL JOIN Section_pricetier " +
+                    "                          JOIN Price_tiers ON Section_pricetier.pricetier_name = Price_tiers.name " +
+                    "                                           AND Section_pricetier.pid = Price_tiers.pid " +
+                    "GROUP BY Available.pid"
+                );
+            }
+
+            if (order.equals("2")) {
+                try (PreparedStatement ps = conn.prepareStatement(
+                    "SELECT Performances.pid, Events.name AS event_name, Performances.datetime, Venues.name AS venue_name, Pid_price.cheapest_available_ticket AS price " +
+                    "FROM Performances JOIN Events ON Performances.eid = Events.eid " +
+                    "                  JOIN Venues ON Performances.venue_name = Venues.name " +
+                    "                  JOIN Pid_price ON Performances.pid = Pid_price.pid " +
+                    "                  LEFT JOIN Reserved_capacity_table ON Performances.pid = Reserved_capacity_table.pid " +
+                    "                  LEFT JOIN General_capacity_table ON Performances.pid = General_capacity_table.pid " +
+                    "                  LEFT JOIN Sold_table ON Performances.pid = Sold_table.pid " +
+                    "                  LEFT JOIN Reserved_blocked_table ON Performances.pid = Reserved_blocked_table.pid " +
+                    "WHERE POWER((Venues.latitude - ?) * 111.0, 2) + " +
+                    "      POWER((Venues.longitude - ?) * 111.0 * COS(RADIANS(?)), 2) <= POWER(?, 2) " +
+                    "  AND Performances.datetime BETWEEN ? AND ? " +
+                    "  AND Performances.cancel_datetime IS NULL " +
+                    "  AND IFNULL(Reserved_capacity_table.reserved_capacity, 0) + IFNULL(General_capacity_table.general_capacity, 0) " +
+                    "      - IFNULL(Sold_table.sold, 0) - IFNULL(Reserved_blocked_table.blocked, 0) >= ? " +
+                    "ORDER BY Pid_price.cheapest_available_ticket ASC"
+                )) {
+                    ps.setDouble(1, latitude);
+                    ps.setDouble(2, longitude);
+                    ps.setDouble(3, latitude);
+                    ps.setDouble(4, distance);
+                    ps.setString(5, start);
+                    ps.setString(6, end);
+                    ps.setInt(7, available);
+
+                    try (ResultSet rs = ps.executeQuery()) {
+                        System.out.printf("%-5s %-30s %-25s %-30s %-10s%n", "PID", "Event", "Datetime", "Venue", "Cheapest available ticket price");
+                        System.out.println("-".repeat(130));
+                        while (rs.next()) {
+                            System.out.printf("%-5d %-30s %-25s %-30s %-10s%n",
+                                rs.getInt("pid"),
+                                rs.getString("event_name"),
+                                rs.getString("datetime"),
+                                rs.getString("venue_name"),
+                                rs.getBigDecimal("price")
+                            );
+                        }
+                    }
+                }
+            }
+            else {
+                try (PreparedStatement ps = conn.prepareStatement(
+                    "SELECT Performances.pid, Events.name AS event_name, Performances.datetime, Venues.name AS venue_name, Pid_price.cheapest_available_ticket AS price " +
+                    "FROM Performances JOIN Events ON Performances.eid = Events.eid " +
+                    "                  JOIN Venues ON Performances.venue_name = Venues.name " +
+                    "                  JOIN Pid_price ON Performances.pid = Pid_price.pid " +
+                    "                  LEFT JOIN Reserved_capacity_table ON Performances.pid = Reserved_capacity_table.pid " +
+                    "                  LEFT JOIN General_capacity_table ON Performances.pid = General_capacity_table.pid " +
+                    "                  LEFT JOIN Sold_table ON Performances.pid = Sold_table.pid " +
+                    "                  LEFT JOIN Reserved_blocked_table ON Performances.pid = Reserved_blocked_table.pid " +
+                    "WHERE POWER((Venues.latitude - ?) * 111.0, 2) + " +
+                    "      POWER((Venues.longitude - ?) * 111.0 * COS(RADIANS(?)), 2) <= POWER(?, 2) " +
+                    "  AND Performances.datetime BETWEEN ? AND ? " +
+                    "  AND Performances.cancel_datetime IS NULL " +
+                    "  AND IFNULL(Reserved_capacity_table.reserved_capacity, 0) + IFNULL(General_capacity_table.general_capacity, 0) " +
+                    "      - IFNULL(Sold_table.sold, 0) - IFNULL(Reserved_blocked_table.blocked, 0) >= ? " +
+                    "ORDER BY Pid_price.cheapest_available_ticket DESC"
+                )) {
+                    ps.setDouble(1, latitude);
+                    ps.setDouble(2, longitude);
+                    ps.setDouble(3, latitude);
+                    ps.setDouble(4, distance);
+                    ps.setString(5, start);
+                    ps.setString(6, end);
+                    ps.setInt(7, available);
+
+                    try (ResultSet rs = ps.executeQuery()) {
+                        System.out.printf("%-5s %-30s %-25s %-30s %-10s%n", "PID", "Event", "Datetime", "Venue", "Cheapest available ticket price");
+                        System.out.println("-".repeat(130));
+                        while (rs.next()) {
+                            System.out.printf("%-5d %-30s %-25s %-30s %-10s%n",
+                                rs.getInt("pid"),
+                                rs.getString("event_name"),
+                                rs.getString("datetime"),
+                                rs.getString("venue_name"),
+                                rs.getBigDecimal("price")
+                            );
+                        }
+                    }
+                }
+            }
+        }
+        else {
+            System.out.print("Invalid choice.\n");
         }
     }
 
     private static void q4_refine_q2(Connection conn, Scanner scanner) throws SQLException {
-        System.out.print("Enter start datetime: YYYY-MM-DD HH:MM:SS");
+        System.out.print("Enter postal code: ");
+        String postal = scanner.nextLine();
+
+        postal = postal.replace(" ", "").toUpperCase();
+        if (!postal.matches("[A-Za-z0-9]{5,6}")) {
+            System.out.println("Postal doesn't have right format.\n");
+            return;
+        }
+
+        System.out.print("Enter start datetime: YYYY-MM-DD HH:MM:SS ");
         String start = scanner.nextLine();
-        System.out.print("Enter end datetime: YYYY-MM-DD HH:MM:SS");
+        System.out.print("Enter end datetime: YYYY-MM-DD HH:MM:SS ");
         String end = scanner.nextLine();
-        System.out.print("Enter availability:");
+        System.out.print("Enter availability: ");
         int available = Integer.parseInt(scanner.nextLine());
 
         try (Statement stmt = conn.createStatement()) {
@@ -2667,19 +2950,23 @@ public class Mytix {
         String sql =
             "SELECT Performances.pid, Events.name AS event_name, Performances.datetime, Venues.name AS venue_name " +
             "FROM Performances JOIN Events ON Performances.eid = Events.eid " +
-            "                 JOIN Venues ON Performances.venue_name = Venues.name " +
-            "                 LEFT JOIN Reserved_capacity_table ON Performances.pid = Reserved_capacity_table.pid " +
-            "                 LEFT JOIN General_capacity_table ON Performances.pid = General_capacity_table.pid " +
-            "                 LEFT JOIN Sold_table ON Performances.pid = Sold_table.pid " +
-            "                 LEFT JOIN Reserved_blocked_table ON Performances.pid = Reserved_blocked_table.pid " +
-            "WHERE Performances.datetime BETWEEN ? AND ? " +
-            "      AND Performances.cancel_datetime IS NULL " +
-            "  AND IFNULL(Reserved_capacity_table.reserved_capacity, 0) + IFNULL(General_capacity_table.general_capacity, 0) - IFNULL(Sold_table.sold, 0) - IFNULL(Reserved_blocked_table.blocked, 0) >= ?";
+            "                  JOIN Venues ON Performances.venue_name = Venues.name " +
+            "                  LEFT JOIN Reserved_capacity_table ON Performances.pid = Reserved_capacity_table.pid " +
+            "                  LEFT JOIN General_capacity_table ON Performances.pid = General_capacity_table.pid " +
+            "                  LEFT JOIN Sold_table ON Performances.pid = Sold_table.pid " +
+            "                  LEFT JOIN Reserved_blocked_table ON Performances.pid = Reserved_blocked_table.pid " +
+            "WHERE LEFT(Venues.postal_code, 3) = LEFT(?, 3) " +
+            "  AND Performances.datetime BETWEEN ? AND ? " +
+            "  AND Performances.cancel_datetime IS NULL " +
+            "  AND IFNULL(Reserved_capacity_table.reserved_capacity, 0) + IFNULL(General_capacity_table.general_capacity, 0) " +
+            "      - IFNULL(Sold_table.sold, 0) - IFNULL(Reserved_blocked_table.blocked, 0) >= ?";
 
         try (PreparedStatement ps = conn.prepareStatement(sql)) {
-            ps.setString(1, start);
-            ps.setString(2, end);
-            ps.setInt(3, available);
+            ps.setString(1, postal);
+            ps.setString(2, start);
+            ps.setString(3, end);
+            ps.setInt(4, available);
+
             try (ResultSet rs = ps.executeQuery()) {
                 System.out.printf("%-10s %-30s %-30s %-30s%n", "PID", "Event", "Datetime", "Venue");
                 System.out.println("-".repeat(90));
@@ -2696,11 +2983,37 @@ public class Mytix {
     }
 
     private static void q4_refine_q3(Connection conn, Scanner scanner) throws SQLException {
-        System.out.print("Enter start datetime: YYYY-MM-DD HH:MM:SS");
+        System.out.print("Enter country: ");
+        String country = scanner.nextLine();
+        System.out.print("Enter city: ");
+        String city = scanner.nextLine();
+        System.out.print("Enter postal code: ");
+        String postal = scanner.nextLine();
+
+        postal = postal.replace(" ", "").toUpperCase();
+
+        System.out.print("Here are the venues:\n");
+
+        try(PreparedStatement vps = conn.prepareStatement(
+            "SELECT name " +
+            "FROM Venues " +
+            "WHERE country = ? AND city = ? AND postal_code = ?"
+        )) {
+            vps.setString(1, country);
+            vps.setString(2, city);
+            vps.setString(3, postal);
+            try (ResultSet vrs = vps.executeQuery()) {
+                while (vrs.next()) {
+                    System.out.printf("%s%n", vrs.getString("name"));
+                }
+            }
+        }
+
+        System.out.print("Enter start datetime: YYYY-MM-DD HH:MM:SS ");
         String start = scanner.nextLine();
-        System.out.print("Enter end datetime: YYYY-MM-DD HH:MM:SS");
+        System.out.print("Enter end datetime: YYYY-MM-DD HH:MM:SS ");
         String end = scanner.nextLine();
-        System.out.print("Enter availability:");
+        System.out.print("Enter availability: ");
         int available = Integer.parseInt(scanner.nextLine());
 
         try (Statement stmt = conn.createStatement()) {
@@ -2739,22 +3052,30 @@ public class Mytix {
             );
         }
 
+        System.out.print("Here are the performances:\n");
+
         String sql =
             "SELECT Performances.pid, Events.name AS event_name, Performances.datetime, Venues.name AS venue_name " +
             "FROM Performances JOIN Events ON Performances.eid = Events.eid " +
-            "                 JOIN Venues ON Performances.venue_name = Venues.name " +
-            "                 LEFT JOIN Reserved_capacity_table ON Performances.pid = Reserved_capacity_table.pid " +
-            "                 LEFT JOIN General_capacity_table ON Performances.pid = General_capacity_table.pid " +
-            "                 LEFT JOIN Sold_table ON Performances.pid = Sold_table.pid " +
-            "                 LEFT JOIN Reserved_blocked_table ON Performances.pid = Reserved_blocked_table.pid " +
-            "WHERE Performances.datetime BETWEEN ? AND ? " +
-            "      AND Performances.cancel_datetime IS NULL " +
-            "  AND IFNULL(Reserved_capacity_table.reserved_capacity, 0) + IFNULL(General_capacity_table.general_capacity, 0) - IFNULL(Sold_table.sold, 0) - IFNULL(Reserved_blocked_table.blocked, 0) >= ?";
+            "                  JOIN Venues ON Performances.venue_name = Venues.name " +
+            "                  LEFT JOIN Reserved_capacity_table ON Performances.pid = Reserved_capacity_table.pid " +
+            "                  LEFT JOIN General_capacity_table ON Performances.pid = General_capacity_table.pid " +
+            "                  LEFT JOIN Sold_table ON Performances.pid = Sold_table.pid " +
+            "                  LEFT JOIN Reserved_blocked_table ON Performances.pid = Reserved_blocked_table.pid " +
+            "WHERE Venues.country = ? AND Venues.city = ? AND Venues.postal_code = ? " +
+            "  AND Performances.datetime BETWEEN ? AND ? " +
+            "  AND Performances.cancel_datetime IS NULL " +
+            "  AND IFNULL(Reserved_capacity_table.reserved_capacity, 0) + IFNULL(General_capacity_table.general_capacity, 0) " +
+            "      - IFNULL(Sold_table.sold, 0) - IFNULL(Reserved_blocked_table.blocked, 0) >= ?";
 
         try (PreparedStatement ps = conn.prepareStatement(sql)) {
-            ps.setString(1, start);
-            ps.setString(2, end);
-            ps.setInt(3, available);
+            ps.setString(1, country);
+            ps.setString(2, city);
+            ps.setString(3, postal);
+            ps.setString(4, start);
+            ps.setString(5, end);
+            ps.setInt(6, available);
+
             try (ResultSet rs = ps.executeQuery()) {
                 System.out.printf("%-10s %-30s %-30s %-30s%n", "PID", "Event", "Datetime", "Venue");
                 System.out.println("-".repeat(90));
@@ -2810,11 +3131,11 @@ public class Mytix {
             stmt.executeUpdate(
                 "CREATE TEMPORARY TABLE Reserved_pid_section AS " + 
                 "SELECT Reserved_pid_section_capacity.pid, Reserved_pid_section_capacity.section_name " +
-                "FROM Reserved_pid_section_capacity LEFT JOIN Reserved_pid_section_sold ON Reserved_pid_section_capacity.pid = Reserved_pid_section_sold.pid" +
-                "                                                                       AND Reserved_pid_section_capacity.section_name = Reserved_pid_section_sold.section_name" +
-                "                                   LEFT JOIN Reserved_pid_section_blocked ON Reserved_pid_section_capacity.pid = Reserved_pid_section_blocked.pid" +
-                "                                                                       AND Reserved_pid_section_capacity.section_name = Reserved_pid_section_blocked.section_name" +
-                "WHERE IFNULL(Reserved_pid_section_sold.sold, 0) < Reserved_pid_section_capacity.capacity - IFNULL(Reserved_pid_section_blocked.blocked, 0) "
+                "FROM Reserved_pid_section_capacity LEFT JOIN Reserved_pid_section_sold ON Reserved_pid_section_capacity.pid = Reserved_pid_section_sold.pid " +
+                "                                                                       AND Reserved_pid_section_capacity.section_name = Reserved_pid_section_sold.section_name " +
+                "                                   LEFT JOIN Reserved_pid_section_blocked ON Reserved_pid_section_capacity.pid = Reserved_pid_section_blocked.pid " +
+                "                                                                       AND Reserved_pid_section_capacity.section_name = Reserved_pid_section_blocked.section_name " +
+                "WHERE IFNULL(Reserved_pid_section_sold.sold, 0) < Reserved_pid_section_capacity.capacity - IFNULL(Reserved_pid_section_blocked.blocked, 0)"
             );
             stmt.executeUpdate(
                 "CREATE TEMPORARY TABLE General_pid_section_sold AS " +
@@ -2894,11 +3215,10 @@ public class Mytix {
             stmt.executeUpdate(
                 "CREATE TEMPORARY TABLE Filter_table AS " +
                 "SELECT Performances.pid, Events.name AS event_name, Performances.datetime, Venues.name AS venue_name, " +
-                "       Venues.city, Events.genre, Genres.segment, Pid_price.cheapest_available_ticket, " +
+                "       Venues.city, Events.genre, Events.segment, Pid_price.cheapest_available_ticket, " +
                 "       Num_available_tickets.reserved_availability, Num_available_tickets.general_availability, Num_available_tickets.availability " +
                 "FROM Performances JOIN Events ON Performances.eid = Events.eid " +
                 "                  JOIN Venues ON Performances.venue_name = Venues.name " +
-                "                  JOIN Genres ON Events.genre = Genres.genre " +
                 "                  JOIN Pid_price ON Performances.pid = Pid_price.pid " +
                 "                  JOIN Num_available_tickets ON Performances.pid = Num_available_tickets.pid " +
                 "WHERE Performances.cancel_datetime IS NULL " +
@@ -2907,10 +3227,10 @@ public class Mytix {
 
             System.out.print("Filters: city, segment, genre, datetime range, cheapest available ticket\n");
             System.out.print("         number of available tickets, reserved, general\n");
-            System.out.print("Would you like to filter by city? y/n\n");
+            System.out.print("Would you like to filter by city? y/n \n");
             String yesno = scanner.nextLine();
             if (yesno.equals("y")) {
-                System.out.print("Enter city:");
+                System.out.print("Enter city: ");
                 String city = scanner.nextLine();
                 try (PreparedStatement ps = conn.prepareStatement(
                         "DELETE FROM Filter_table WHERE city <> ?")) {
@@ -2919,10 +3239,10 @@ public class Mytix {
                 }
             }
 
-            System.out.print("Would you like to filter by segment? y/n\n");
+            System.out.print("Would you like to filter by segment? y/n \n");
             yesno = scanner.nextLine();
             if (yesno.equals("y")) {
-                System.out.print("Enter segment:");
+                System.out.print("Enter segment: ");
                 String seg = scanner.nextLine();
                 try (PreparedStatement ps = conn.prepareStatement(
                         "DELETE FROM Filter_table WHERE segment <> ?")) {
@@ -2931,10 +3251,10 @@ public class Mytix {
                 }
             }
 
-            System.out.print("Would you like to filter by genre? y/n\n");
+            System.out.print("Would you like to filter by genre? y/n \n");
             yesno = scanner.nextLine();
             if (yesno.equals("y")) {
-                System.out.print("Enter genre:");
+                System.out.print("Enter genre: ");
                 String genre = scanner.nextLine();
                 try (PreparedStatement ps = conn.prepareStatement(
                         "DELETE FROM Filter_table WHERE genre <> ?")) {
@@ -2943,12 +3263,12 @@ public class Mytix {
                 }
             }
 
-            System.out.print("Would you like to filter by datetime range? y/n\n");
+            System.out.print("Would you like to filter by datetime range? y/n \n");
             yesno = scanner.nextLine();
             if (yesno.equals("y")) {
-                System.out.print("Enter start datetime: YYYY-MM-DD HH:MM:SS");
+                System.out.print("Enter start datetime: YYYY-MM-DD HH:MM:SS ");
                 String start = scanner.nextLine();
-                System.out.print("Enter end datetime: YYYY-MM-DD HH:MM:SS");
+                System.out.print("Enter end datetime: YYYY-MM-DD HH:MM:SS ");
                 String end = scanner.nextLine();
                 try (PreparedStatement ps = conn.prepareStatement(
                         "DELETE FROM Filter_table WHERE datetime NOT BETWEEN ? AND ?")) {
@@ -2958,12 +3278,12 @@ public class Mytix {
                 }
             }
 
-            System.out.print("Would you like to filter by cheapest available ticket price range? y/n\n");
+            System.out.print("Would you like to filter by cheapest available ticket price range? y/n \n");
             yesno = scanner.nextLine();
             if (yesno.equals("y")) {
-                System.out.print("Enter price bottom line:");
+                System.out.print("Enter price bottom line: ");
                 String start = scanner.nextLine();
-                System.out.print("Enter price top line:");
+                System.out.print("Enter price top line: ");
                 String end = scanner.nextLine();
                 try (PreparedStatement ps = conn.prepareStatement(
                         "DELETE FROM Filter_table WHERE cheapest_available_ticket NOT BETWEEN ? AND ?")) {
@@ -2973,10 +3293,10 @@ public class Mytix {
                 }
             }
 
-            System.out.print("Would you like to filter by number of available tickets y/n\n");
+            System.out.print("Would you like to filter by number of available tickets y/n \n");
             yesno = scanner.nextLine();
             if (yesno.equals("y")) {
-                System.out.print("Enter at least how many available tickets:");
+                System.out.print("Enter at least how many available tickets: ");
                 String least = scanner.nextLine();
                 System.out.print("Do you want reserved seating, general admission, or any? (r/g/a): ");
                 String seatType = scanner.nextLine();
@@ -3010,11 +3330,11 @@ public class Mytix {
             try (ResultSet rs = stmt.executeQuery(
                     "SELECT * " +
                     "FROM Filter_table")) {
-                System.out.printf("%-6s %-25s %-20s %-20s %-15s %-10s %-12s %-24s %-10s %-10s %-10s%n",
+                System.out.printf("%-5s %-30s %-20s %-25s %-10s %-20s %-20s %-20s %-10s %-10s %-10s%n",
                         "PID", "Event", "Datetime", "Venue", "City", "Genre", "Segment", "Cheapest available price", "Reserved", "General", "Total");
-                System.out.println("-".repeat(160));
+                System.out.println("-".repeat(190));
                 while (rs.next()) {
-                    System.out.printf("%-6d %-25s %-20s %-20s %-15s %-10s %-12s %-10.2f %-10d %-10d %-10d%n",
+                    System.out.printf("%-5d %-30s %-20s %-25s %-10s %-20s %-20s %-20.2f %-10d %-10d %-10d%n",
                             rs.getInt("pid"),
                             rs.getString("event_name"),
                             rs.getString("datetime"),
@@ -3081,7 +3401,7 @@ public class Mytix {
                     "CREATE TEMPORARY TABLE Reserved AS " +
                     "SELECT Reserved_capacity.section_name, (Reserved_capacity.capacity - IFNULL(Reserved_sold.sold, 0) - IFNULL(Reserved_blocked.blocked, 0)) AS available, " +
                     "       IFNULL(Reserved_sold.sold, 0) AS sold, IFNULL(Reserved_blocked.blocked, 0) as blocked " +
-                    "FROM Reserved_capacity LEFT JOIN Reserved_sold ON Reserved_capacity.section_name = Reserved_sold.section_name" +
+                    "FROM Reserved_capacity LEFT JOIN Reserved_sold ON Reserved_capacity.section_name = Reserved_sold.section_name " +
                     "                       LEFT JOIN Reserved_blocked ON Reserved_capacity.section_name = Reserved_blocked.section_name");
 
             try (PreparedStatement ps = conn.prepareStatement(
@@ -3113,9 +3433,9 @@ public class Mytix {
                     "FROM General_capacity LEFT JOIN General_sold ON General_capacity.section_name = General_sold.section_name");
 
             try (PreparedStatement ps = conn.prepareStatement(
-                    "SELECT Both.section_name, Both.available, Both.sold, Both.blocked, Price_tiers.name, Price_tiers.price " +
-                    "FROM ((SELECT * FROM Reserved) UNION ALL (SELECT * FROM General)) AS Both " +
-                    "     JOIN Section_pricetier ON Both.section_name = Section_pricetier.section_name " +
+                    "SELECT Combined.section_name, Combined.available, Combined.sold, Combined.blocked, Price_tiers.name, Price_tiers.price " +
+                    "FROM ((SELECT * FROM Reserved) UNION ALL (SELECT * FROM General)) AS Combined " +
+                    "     JOIN Section_pricetier ON Combined.section_name = Section_pricetier.section_name " +
                     "     JOIN Price_tiers ON Section_pricetier.pricetier_name = Price_tiers.name " +
                     "                         AND Section_pricetier.pid = Price_tiers.pid " +
                     "WHERE Section_pricetier.pid = ? " +
@@ -3314,12 +3634,10 @@ public class Mytix {
     private static void r2_1_genre_report(Connection conn, Scanner scanner) throws SQLException {
         try (Statement stmt = conn.createStatement();
             ResultSet rs = stmt.executeQuery(
-                "SELECT Segments.segment, Genres.genre, COUNT(DISTINCT Events.eid) AS num_of_events, COUNT(DISTINCT Performances.pid) AS num_of_performances " +
+                "SELECT Events.segment, Events.genre, COUNT(DISTINCT Events.eid) AS num_of_events, COUNT(DISTINCT Performances.pid) AS num_of_performances " +
                 "FROM Performances JOIN Events ON Performances.eid = Events.eid " +
-                "                  JOIN Genres ON Events.genre = Genres.genre " +
-                "                  JOIN Segments ON Genres.segment = Segments.segment " +
                 "WHERE Performances.cancel_datetime IS NULL " +
-                "GROUP BY Segments.segment, Genres.genre"
+                "GROUP BY Events.segment, Events.genre"
             )) {
 
             System.out.printf(
@@ -3409,7 +3727,7 @@ public class Mytix {
                 "%-25s %-25s %-25s %-20s %-20s%n",
                 "Country", "City", "Venue", "Number of events", "Number of performances"
             );
-            System.out.println("-".repeat(85));
+            System.out.println("-".repeat(115));
 
             while (rs.next()) {
                 System.out.printf(
@@ -3603,9 +3921,9 @@ public class Mytix {
     }
 
     private static void r5_1_customer_order_rank(Connection conn, Scanner scanner) throws SQLException {
-        System.out.print("Enter the start datetime: YYYY-MM-DD HH:MM:SS");
+        System.out.print("Enter the start datetime: YYYY-MM-DD HH:MM:SS ");
         String start = scanner.nextLine();
-        System.out.print("Enter the end datetime: YYYY-MM-DD HH:MM:SS");
+        System.out.print("Enter the end datetime: YYYY-MM-DD HH:MM:SS ");
         String end = scanner.nextLine();
 
         try (PreparedStatement ps = conn.prepareStatement(
@@ -3638,9 +3956,9 @@ public class Mytix {
     }
 
     private static void r5_2_customer_order_city_rank(Connection conn, Scanner scanner) throws SQLException {
-        System.out.print("Enter the start datetime: YYYY-MM-DD HH:MM:SS");
+        System.out.print("Enter the start datetime: YYYY-MM-DD HH:MM:SS ");
         String start = scanner.nextLine();
-        System.out.print("Enter the end datetime: YYYY-MM-DD HH:MM:SS");
+        System.out.print("Enter the end datetime: YYYY-MM-DD HH:MM:SS ");
         String end = scanner.nextLine();
 
         try (PreparedStatement ps = conn.prepareStatement(
@@ -3776,7 +4094,7 @@ public class Mytix {
             stmt.executeUpdate(
                     "CREATE TEMPORARY TABLE Reserved AS " +
                     "SELECT Reserved_capacity.pid, Reserved_capacity.section_name, (Reserved_capacity.capacity - IFNULL(Reserved_blocked.blocked, 0)) AS sellable, IFNULL(Reserved_sold.sold, 0) AS sold " +
-                    "FROM Reserved_capacity LEFT JOIN Reserved_sold ON Reserved_capacity.pid = Reserved_sold.pid" +
+                    "FROM Reserved_capacity LEFT JOIN Reserved_sold ON Reserved_capacity.pid = Reserved_sold.pid " +
                     "                                               AND Reserved_capacity.section_name = Reserved_sold.section_name " +
                     "                       LEFT JOIN Reserved_blocked ON Reserved_capacity.pid = Reserved_blocked.pid " +
                     "                                               AND Reserved_capacity.section_name = Reserved_blocked.section_name"
@@ -3810,10 +4128,10 @@ public class Mytix {
 
             if (choice.equals("1")) {
                 try (ResultSet rs = stmt.executeQuery(
-                    "SELECT Price_tiers.pid, SUM(Both.sellable) AS sellable, SUM(Both.sold) AS sold, SUM(Both.sold) * 1.0 / NULLIF(SUM(Both.sellable), 0) AS sell_through_rate " +
-                    "FROM ((SELECT * FROM Reserved) UNION ALL (SELECT * FROM General)) AS Both " +
-                    "     JOIN Section_pricetier ON Both.pid = Section_pricetier.pid " +
-                    "                            AND Both.section_name = Section_pricetier.section_name " +
+                    "SELECT Price_tiers.pid, SUM(Combined.sellable) AS sellable, SUM(Combined.sold) AS sold, SUM(Combined.sold) * 1.0 / NULLIF(SUM(Combined.sellable), 0) AS sell_through_rate " +
+                    "FROM ((SELECT * FROM Reserved) UNION ALL (SELECT * FROM General)) AS Combined " +
+                    "     JOIN Section_pricetier ON Combined.pid = Section_pricetier.pid " +
+                    "                            AND Combined.section_name = Section_pricetier.section_name " +
                     "     JOIN Price_tiers ON Section_pricetier.pricetier_name = Price_tiers.name " +
                     "                         AND Section_pricetier.pid = Price_tiers.pid " +
                     "GROUP BY Price_tiers.pid"
@@ -3831,10 +4149,10 @@ public class Mytix {
             }
             else if (choice.equals("2")) {
                 try (ResultSet rs = stmt.executeQuery(
-                    "SELECT Price_tiers.pid, Price_tiers.name, SUM(Both.sellable) AS sellable, SUM(Both.sold) AS sold, SUM(Both.sold) * 1.0 / NULLIF(SUM(Both.sellable), 0) AS sell_through_rate " +
-                    "FROM ((SELECT * FROM Reserved) UNION ALL (SELECT * FROM General)) AS Both " +
-                    "     JOIN Section_pricetier ON Both.pid = Section_pricetier.pid " +
-                    "                            AND Both.section_name = Section_pricetier.section_name " +
+                    "SELECT Price_tiers.pid, Price_tiers.name, SUM(Combined.sellable) AS sellable, SUM(Combined.sold) AS sold, SUM(Combined.sold) * 1.0 / NULLIF(SUM(Combined.sellable), 0) AS sell_through_rate " +
+                    "FROM ((SELECT * FROM Reserved) UNION ALL (SELECT * FROM General)) AS Combined " +
+                    "     JOIN Section_pricetier ON Combined.pid = Section_pricetier.pid " +
+                    "                            AND Combined.section_name = Section_pricetier.section_name " +
                     "     JOIN Price_tiers ON Section_pricetier.pricetier_name = Price_tiers.name " +
                     "                         AND Section_pricetier.pid = Price_tiers.pid " +
                     "GROUP BY Price_tiers.pid, Price_tiers.name"
@@ -3868,30 +4186,30 @@ public class Mytix {
 
             System.out.print("Here are the performances that sold out or sold below 1/4:\n");
             try (PreparedStatement ps = conn.prepareStatement(
-                "SELECT Venues.country, Venues.city, Both.pid, " +
-                "       SUM(Both.sellable) AS sellable, " +
-                "       SUM(Both.sold) AS sold, " +
-                "       SUM(Both.sold) * 1.0 / " +
-                "           NULLIF(SUM(Both.sellable), 0) AS sell_through_rate, " +
+                "SELECT Venues.country, Venues.city, Combined.pid, " +
+                "       SUM(Combined.sellable) AS sellable, " +
+                "       SUM(Combined.sold) AS sold, " +
+                "       SUM(Combined.sold) * 1.0 / " +
+                "           NULLIF(SUM(Combined.sellable), 0) AS sell_through_rate, " +
                 "       CASE " +
-                "           WHEN SUM(Both.sold) = SUM(Both.sellable) " +
+                "           WHEN SUM(Combined.sold) = SUM(Combined.sellable) " +
                 "               THEN 'Sold out' " +
-                "           WHEN SUM(Both.sold) * 4 < SUM(Both.sellable) " +
+                "           WHEN SUM(Combined.sold) * 4 < SUM(Combined.sellable) " +
                 "               THEN 'Below one quarter' " +
                 "       END AS status " +
                 "FROM ((SELECT * FROM Reserved) " +
                 "      UNION ALL " +
-                "      (SELECT * FROM General)) AS Both " +
-                "JOIN Performances ON Both.pid = Performances.pid " +
+                "      (SELECT * FROM General)) AS Combined " +
+                "JOIN Performances ON Combined.pid = Performances.pid " +
                 "JOIN Venues ON Performances.venue_name = Venues.name " +
                 "WHERE Performances.datetime >= ? " +
                 "  AND Performances.datetime < ? " +
                 "  AND Performances.cancel_datetime IS NULL " +
-                "GROUP BY Venues.country, Venues.city, Both.pid " +
-                "HAVING SUM(Both.sellable) > 0 " +
-                "   AND (SUM(Both.sold) = SUM(Both.sellable) " +
-                "        OR SUM(Both.sold) * 4 < SUM(Both.sellable)) " +
-                "ORDER BY Venues.country, Venues.city, Both.pid"
+                "GROUP BY Venues.country, Venues.city, Combined.pid " +
+                "HAVING SUM(Combined.sellable) > 0 " +
+                "   AND (SUM(Combined.sold) = SUM(Combined.sellable) " +
+                "        OR SUM(Combined.sold) * 4 < SUM(Combined.sellable)) " +
+                "ORDER BY Venues.country, Venues.city, Combined.pid"
             )) {
                 ps.setTimestamp(1, start);
                 ps.setTimestamp(2, end);
