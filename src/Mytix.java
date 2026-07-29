@@ -2,6 +2,21 @@ import java.sql.*;
 import java.util.Scanner;
 import java.math.BigDecimal;
 
+import java.util.*;
+
+import opennlp.tools.chunker.ChunkerME;
+import opennlp.tools.chunker.ChunkerModel;
+import opennlp.tools.postag.POSModel;
+import opennlp.tools.postag.POSTaggerME;
+import opennlp.tools.tokenize.TokenizerME;
+import opennlp.tools.tokenize.TokenizerModel;
+import opennlp.tools.util.Span;
+
+import java.io.FileInputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.text.BreakIterator;
+
 class ConnectDatabase {
     static final String URL  = "jdbc:mysql://localhost:3306/mydb";
     static final String USER = "root";
@@ -24,7 +39,7 @@ public class Mytix {
             Scanner scanner = new Scanner(System.in);
 
             while (true) {
-                System.out.print("1 Operations   2 Queries   3 Reports   4 Exit\n");
+                System.out.print("1 Operations\n2 Queries\n3 Reports\n4 Organizer toolkit (help you decide price tiers)\n5 Exit\n");
                 System.out.print("Choose by entering a number.\n");
                 String choice = scanner.nextLine();
 
@@ -35,6 +50,8 @@ public class Mytix {
                 else if (choice.equals("3"))
                     reports(conn, scanner);
                 else if (choice.equals("4"))
+                    orgainzer_toolkit(conn, scanner);
+                else if (choice.equals("5"))
                     break;
                 else
                     System.out.print("Invalid choice.\n");
@@ -421,6 +438,112 @@ public class Mytix {
         }
     }
 
+    private static Set<String> extractNounPhrases(String comment, TokenizerME tokenizer, POSTaggerME posTagger, ChunkerME chunker) {
+        Set<String> nounPhrases = new HashSet<>();
+
+        BreakIterator sentenceIterator =
+                BreakIterator.getSentenceInstance(Locale.ENGLISH);
+
+        sentenceIterator.setText(comment);
+
+        int start = sentenceIterator.first();
+
+        for (
+            int end = sentenceIterator.next();
+            end != BreakIterator.DONE;
+            start = end, end = sentenceIterator.next()
+        ) {
+            String sentence =
+                    comment.substring(start, end).trim();
+
+            if (sentence.isEmpty()) {
+                continue;
+            }
+
+            String[] tokens = tokenizer.tokenize(sentence);
+            String[] posTags = posTagger.tag(tokens);
+            Span[] chunks = chunker.chunkAsSpans(tokens, posTags);
+
+            for (Span chunk : chunks) {
+                if (!chunk.getType().equals("NP")) {
+                    continue;
+                }
+
+                String nounPhrase =
+                        normalizeNounPhrase(
+                                tokens,
+                                posTags,
+                                chunk.getStart(),
+                                chunk.getEnd()
+                        );
+
+                if (nounPhrase != null) {
+                    nounPhrases.add(nounPhrase);
+                }
+            }
+        }
+
+        return nounPhrases;
+    }
+
+    private static String normalizeNounPhrase(String[] tokens, String[] posTags, int start, int end) {
+        while (
+            start < end &&
+            (
+                posTags[start].equals("DT") ||
+                posTags[start].equals("PRP$") ||
+                posTags[start].equals("POS") ||
+                posTags[start].equals("DET")
+            )
+        ) {
+            start++;
+        }
+
+        if (start >= end) {
+            return null;
+        }
+
+        boolean containsNoun = false;
+
+        for (int i = start; i < end; i++) {
+            if (
+                posTags[i].startsWith("NN") ||
+                posTags[i].equals("NOUN") ||
+                posTags[i].equals("PROPN")
+            ) {
+                containsNoun = true;
+                break;
+            }
+        }
+
+        if (!containsNoun) {
+            return null;
+        }
+
+        StringBuilder phraseBuilder = new StringBuilder();
+
+        for (int i = start; i < end; i++) {
+            if (phraseBuilder.length() > 0) {
+                phraseBuilder.append(" ");
+            }
+
+            phraseBuilder.append(tokens[i]);
+        }
+
+        String phrase = phraseBuilder
+                .toString()
+                .toLowerCase(Locale.ENGLISH)
+                .replaceAll("[^\\p{L}\\p{N}' -]", " ")
+                .replaceAll("\\s+", " ")
+                .trim();
+
+        if (phrase.length() < 2) {
+            return null;
+        }
+
+        return phrase;
+    }
+
     private static void print_operations_options () {
         System.out.print("1 Create a profile.\n");
         System.out.print("2 Delete a profile.\n");
@@ -487,6 +610,7 @@ public class Mytix {
         System.out.print("4.3                                         3.\n");
         System.out.print("5 Search by filters.\n");
         System.out.print("6 Seat summary of a performance.\n");
+        System.out.print("7 Find best available seats.\n");
         System.out.print("Choose by entering a number.\n");
     }
 
@@ -510,6 +634,8 @@ public class Mytix {
             q5_filters(conn, scanner);
         else if (choice.equals("6"))
             q6_seat_map_summary(conn, scanner);
+        else if (choice.equals("7"))
+            q7_best_available(conn, scanner);
         else
             System.out.println("Invalid choice.\n");
 
@@ -536,6 +662,7 @@ public class Mytix {
         System.out.print("8.2              average markup over face value.\n");
         System.out.print("8.3              fraction of listings priced exactly at the cap.\n");
         System.out.print("8.4 Report top 10 events by resale volume in a given period.\n");
+        System.out.print("9   Report event comment most popular noun phrase.\n");
         System.out.print("Choose by entering a choice, e.g. 1.1\n");
     }
 
@@ -581,6 +708,8 @@ public class Mytix {
             r8_3_resales_report_fraction(conn, scanner);
         else if (choice.equals("8.4"))
             r8_4_resales_report_top_10(conn, scanner);
+        else if (choice.equals("9"))
+            r9_popular_noun_phrases(conn, scanner);
         else
             System.out.println("Invalid choice.\n");
     }
@@ -1271,12 +1400,11 @@ public class Mytix {
             sections.setInt(1, pid);
 
             try (ResultSet rs = sections.executeQuery()) {
+                System.out.printf(
+                        "%-20s %-10s%n",
+                        "Price tier name", "Price");
+                System.out.println("-".repeat(30));
                 while (rs.next()) {
-                    System.out.printf(
-                            "%-20s %-10s%n",
-                            "Price tier name", "Price");
-                    System.out.println("-".repeat(30));
-
                     System.out.printf(
                             "%-20s %-10s%n",
                             rs.getString("name"),
@@ -3355,6 +3483,10 @@ public class Mytix {
         System.out.print("Enter performance PID:\n");
         System.out.print("You should get PID from other queries, e.g. using filters.\n");
         int pid = Integer.parseInt(scanner.nextLine());
+        if (!helper_performance_exists(conn, pid)) {
+            System.out.print("Invalid PID.\n");
+            return;
+        }
 
         try (Statement stmt = conn.createStatement()) {
             stmt.executeUpdate("DROP TEMPORARY TABLE IF EXISTS Reserved_capacity");
@@ -3457,6 +3589,155 @@ public class Mytix {
                 }
             }
         }
+    }
+
+    private static void q7_best_available(Connection conn, Scanner scanner) throws SQLException {
+        System.out.print("Enter performance PID:\n");
+        System.out.print("You should get PID from other queries, e.g. using filters.\n");
+        int pid = Integer.parseInt(scanner.nextLine());
+        if (!helper_performance_exists(conn, pid)) {
+            System.out.print("Invalid PID.\n");
+            return;
+        }
+
+        System.out.print("How many tickets do you need?\n");
+        int num = Integer.parseInt(scanner.nextLine());
+        if (num <= 0) {
+            System.out.print("Number of tickets must be greater than 0.\n");
+            return;
+        }
+
+        BigDecimal budget = new BigDecimal("0");
+        System.out.print("Is there a budget limit? y/n\n");
+        String choice = scanner.nextLine();
+        if (choice.equals("y")) {
+            System.out.print("Enter the total price limit:\n");
+            try {
+                budget = new BigDecimal(scanner.nextLine());
+            }
+            catch (NumberFormatException e) {
+                System.out.print("Invalid budget.\n");
+                return;
+            }
+
+        }
+
+        try (Statement stmt = conn.createStatement()) {
+            stmt.executeUpdate("DROP TEMPORARY TABLE IF EXISTS Available");
+            stmt.executeUpdate("DROP TEMPORARY TABLE IF EXISTS Sold");
+            stmt.executeUpdate("DROP TEMPORARY TABLE IF EXISTS Blocked");
+            stmt.executeUpdate("DROP TEMPORARY TABLE IF EXISTS Total");
+        }
+
+        try (PreparedStatement total = conn.prepareStatement(
+            "CREATE TEMPORARY TABLE Total AS " +
+            "SELECT Seats.section_name, Seats.seat, Seats.`row`, Price_tiers.price " +
+            "FROM Seats JOIN Venues ON Seats.venue_name = Venues.name " +
+            "           JOIN Performances ON Venues.name = Performances.venue_name " +
+            "           JOIN Section_pricetier ON Performances.pid = Section_pricetier.pid " +
+            "                                 AND Seats.section_name = Section_pricetier.section_name " +
+            "           JOIN Price_tiers ON Section_pricetier.pid = Price_tiers.pid " +
+            "                           AND Section_pricetier.pricetier_name = Price_tiers.name " +
+            "WHERE Performances.pid = ?"
+        )) {
+            total.setInt(1, pid);
+            total.executeUpdate();
+        }
+
+        try (PreparedStatement blocked = conn.prepareStatement(
+            "CREATE TEMPORARY TABLE Blocked AS " +
+            "SELECT Block.section_name, Block.seat, Block.`row` " +
+            "FROM Block " +
+            "WHERE Block.pid = ?"
+        )) {
+            blocked.setInt(1, pid);
+            blocked.executeUpdate();
+        }
+
+        try (PreparedStatement sold = conn.prepareStatement(
+            "CREATE TEMPORARY TABLE Sold AS " +
+            "SELECT Reserved_tickets.section_name, Reserved_tickets.seat, Reserved_tickets.`row` " +
+            "FROM Reserved_tickets NATURAL JOIN Tickets " +
+            "                      NATURAL JOIN Orders " +
+            "WHERE Orders.pid = ? " +
+            "  AND Tickets.cancel_datetime IS NULL"
+        )) {
+            sold.setInt(1, pid);
+            sold.executeUpdate();
+        }
+
+        try (PreparedStatement available = conn.prepareStatement(
+            "CREATE TEMPORARY TABLE Available AS " +
+            "SELECT Total.section_name, Total.seat, Total.`row`, Total.price " +
+            "FROM Total LEFT JOIN Blocked ON Total.section_name = Blocked.section_name " +
+            "                            AND Total.seat = Blocked.seat " +
+            "                            AND Total.`row` = Blocked.`row` " +
+            "           LEFT JOIN Sold ON Total.section_name = Sold.section_name " +
+            "                         AND Total.seat = Sold.seat " +
+            "                         AND Total.`row` = Sold.`row` " +
+            "WHERE Blocked.seat IS NULL " +
+            "  AND Sold.seat IS NULL"
+        )) {
+            available.executeUpdate();
+        }
+
+        try (PreparedStatement ps = conn.prepareStatement(
+            "SELECT section_name, seat, `row`, price " +
+            "FROM Available " +
+            "ORDER BY price, section_name, `row`, seat"
+        )) {
+            ResultSet rs = ps.executeQuery();
+
+            String previous_section = null;
+            int previous_row = -1;
+            int previous_seat = -1;
+
+            int firstSeat = -1;
+            int consecutive = 0;
+
+            while (rs.next()) {
+                String section = rs.getString("section_name");
+                int row = rs.getInt("row");
+                int seat = rs.getInt("seat");
+                BigDecimal price = rs.getBigDecimal("price");
+
+                if (section.equals(previous_section)
+                        && row == previous_row
+                        && seat == previous_seat + 1) {
+                    consecutive++;
+                }
+                else {
+                    firstSeat = seat;
+                    consecutive = 1;
+                }
+
+                if (consecutive == num) {
+                    BigDecimal totalPrice = price.multiply(BigDecimal.valueOf(num));
+                    if (choice.equals("y")) {
+                        if (totalPrice.compareTo(budget) > 0) {
+                            System.out.print("The total price exceeds your budget.\n");
+                            return;
+                        }
+                    }
+
+                    System.out.printf(
+                        "Best available seats: Section %s, Row %d, Seats %d to %d.\n",
+                        section,
+                        row,
+                        firstSeat,
+                        seat
+                    );
+                    System.out.printf("Total price: %s.\n", totalPrice);
+                    return;
+                }
+
+                previous_section = section;
+                previous_row = row;
+                previous_seat = seat;
+            }
+        }
+
+        System.out.print("There is no match for you.\n");
     }
 
     private static void r1_1_city_ticket_or_revenue_rank(Connection conn, Scanner scanner) throws SQLException {
@@ -4386,6 +4667,336 @@ public class Mytix {
                 );
             }
         }
+        }
+    }
+
+    private static void r9_popular_noun_phrases(Connection conn, Scanner scanner) throws SQLException {
+        final int TOP_N = 10;
+
+        Map<Integer, String> eventNames = new LinkedHashMap<>();
+        Map<Integer, Map<String, Integer>> phraseCountsByEvent =
+                new LinkedHashMap<>();
+
+        try (
+            InputStream tokenModelIn =
+                    new FileInputStream("models/en-token.bin");
+            InputStream posModelIn =
+                    new FileInputStream("models/en-pos-maxent.bin");
+            InputStream chunkModelIn =
+                    new FileInputStream("models/en-chunker.bin")
+        ) {
+            TokenizerME tokenizer =
+                    new TokenizerME(new TokenizerModel(tokenModelIn));
+
+            POSTaggerME posTagger =
+                    new POSTaggerME(new POSModel(posModelIn));
+
+            ChunkerME chunker =
+                    new ChunkerME(new ChunkerModel(chunkModelIn));
+
+            String sql =
+                    "SELECT Events.eid, Events.name AS event_name, Review.comment " +
+                    "FROM Events " +
+                    "LEFT JOIN Performances " +
+                    "       ON Events.eid = Performances.eid " +
+                    "LEFT JOIN Review " +
+                    "       ON Performances.pid = Review.pid " +
+                    "ORDER BY Events.eid";
+
+            try (
+                Statement stmt = conn.createStatement();
+                ResultSet rs = stmt.executeQuery(sql)
+            ) {
+                while (rs.next()) {
+                    int eid = rs.getInt("eid");
+                    String eventName = rs.getString("event_name");
+                    String comment = rs.getString("comment");
+
+                    eventNames.putIfAbsent(eid, eventName);
+
+                    Map<String, Integer> phraseCounts =
+                            phraseCountsByEvent.computeIfAbsent(
+                                    eid,
+                                    key -> new HashMap<>()
+                            );
+
+                    if (comment == null || comment.isBlank()) {
+                        continue;
+                    }
+
+                    Set<String> phrasesInThisReview =
+                            extractNounPhrases(
+                                    comment,
+                                    tokenizer,
+                                    posTagger,
+                                    chunker
+                            );
+
+                    for (String phrase : phrasesInThisReview) {
+                        phraseCounts.merge(phrase, 1, Integer::sum);
+                    }
+                }
+            }
+
+            for (Map.Entry<Integer, String> event : eventNames.entrySet()) {
+                int eid = event.getKey();
+                String eventName = event.getValue();
+
+                System.out.printf(
+                        "%nEID %d: %s%n",
+                        eid,
+                        eventName
+                );
+
+                Map<String, Integer> phraseCounts =
+                        phraseCountsByEvent.get(eid);
+
+                if (phraseCounts == null || phraseCounts.isEmpty()) {
+                    System.out.println("No noun phrases found.");
+                    continue;
+                }
+
+                List<Map.Entry<String, Integer>> sortedPhrases =
+                        new ArrayList<>(phraseCounts.entrySet());
+
+                sortedPhrases.sort((first, second) -> {
+                    int countComparison = Integer.compare(
+                            second.getValue(),
+                            first.getValue()
+                    );
+
+                    if (countComparison != 0) {
+                        return countComparison;
+                    }
+
+                    return first.getKey().compareTo(second.getKey());
+                });
+
+                System.out.printf(
+                        "%-40s %-20s%n",
+                        "Noun phrase",
+                        "Number of reviews that mentions it"
+                );
+                System.out.println("-".repeat(60));
+
+                int numberToPrint =
+                        Math.min(TOP_N, sortedPhrases.size());
+
+                for (int i = 0; i < numberToPrint; i++) {
+                    Map.Entry<String, Integer> phrase =
+                            sortedPhrases.get(i);
+
+                    System.out.printf(
+                            "%-40s %-20d%n",
+                            phrase.getKey(),
+                            phrase.getValue()
+                    );
+                }
+            }
+        }
+        catch (IOException e) {
+            System.out.println(
+                    "Unable to load the OpenNLP library models."
+            );
+            System.out.println(
+                    "Expected model files under the models directory:"
+            );
+            System.out.println("models/en-token.bin");
+            System.out.println("models/en-pos-maxent.bin");
+            System.out.println("models/en-chunker.bin");
+            System.out.println("Details: " + e.getMessage());
+        }
+    }
+
+    private static void orgainzer_toolkit(Connection conn, Scanner scanner) throws SQLException {
+        System.out.print("Enter your UID:\n");
+        int uid = Integer.parseInt(scanner.nextLine());
+
+        if (!helper_organizer_exists(conn, uid)) {
+            System.out.print("Invalid UID.\n");
+            return;
+        }
+
+        System.out.print("Here are the events you have created:\n");
+
+        try (PreparedStatement eventps = conn.prepareStatement(
+                "SELECT eid, name " +
+                "FROM Events " +
+                "WHERE uid = ?")) {
+            eventps.setInt(1, uid);
+
+            try (ResultSet rs = eventps.executeQuery()) {
+                System.out.printf(
+                        "%-10s %-30s%n",
+                        "EID", "Event name");
+                System.out.println("-".repeat(40));
+
+                while (rs.next()) {
+                    System.out.printf(
+                            "%-10d %-30s%n",
+                            rs.getInt("eid"),
+                            rs.getString("name"));
+                }
+            }
+        }
+
+        System.out.print("Enter EID:\n");
+        int eid = Integer.parseInt(scanner.nextLine());
+
+        if (!helper_event_exists(conn, eid, uid)) {
+            System.out.print("Invalid EID.\n");
+            return;
+        }
+
+        System.out.print("Here are the performances of this event:\n");
+
+        try (PreparedStatement performanceps = conn.prepareStatement(
+                "SELECT pid, datetime, venue_name " +
+                "FROM Performances " +
+                "WHERE eid = ? AND cancel_datetime IS NULL")) {
+            performanceps.setInt(1, eid);
+
+            try (ResultSet rs = performanceps.executeQuery()) {
+                System.out.printf(
+                        "%-10s %-25s %-30s%n",
+                        "PID", "Datetime", "Venue");
+                System.out.println("-".repeat(65));
+
+                while (rs.next()) {
+                    System.out.printf(
+                            "%-10d %-25s %-30s%n",
+                            rs.getInt("pid"),
+                            rs.getString("datetime"),
+                            rs.getString("venue_name"));
+                }
+            }
+        }
+
+        System.out.print("Enter PID:\n");
+        int pid = Integer.parseInt(scanner.nextLine());
+
+        if (!helper_performance_exists_witheid(conn, pid, eid)) {
+            System.out.print("Invalid PID.\n");
+            return;
+        }
+
+        try (PreparedStatement date = conn.prepareStatement(
+            "SELECT datetime " +
+            "FROM Performances " +
+            "WHERE pid = ?"
+        )) {
+            date.setInt(1, pid);
+
+            try (ResultSet rs = date.executeQuery()) {
+                rs.next();
+                Timestamp time = rs.getTimestamp("datetime");
+
+                if (!time.after(new Timestamp(System.currentTimeMillis()))) {
+                    System.out.println("The organizer toolkit is for future performances.");
+                    return;
+                }
+            }
+        }
+
+        String venueName;
+        String segment;
+
+        try (PreparedStatement ps = conn.prepareStatement(
+                "SELECT Performances.venue_name, Events.segment " +
+                "FROM Performances JOIN Events ON Performances.eid = Events.eid " +
+                "WHERE Performances.pid = ?")) {
+
+            ps.setInt(1, pid);
+
+            try (ResultSet rs = ps.executeQuery()) {
+                if (!rs.next()) {
+                    System.out.println("Invalid PID.");
+                    return;
+                }
+
+                venueName = rs.getString("venue_name");
+                segment = rs.getString("segment");
+            }
+        }
+
+        int previousPid;
+
+        try (PreparedStatement ps = conn.prepareStatement(
+                "SELECT Performances.pid " +
+                "FROM Performances JOIN Events ON Performances.eid = Events.eid " +
+                "WHERE Performances.venue_name = ? " +
+                "  AND Events.segment = ? " +
+                "  AND Performances.datetime < CURRENT_TIMESTAMP " +
+                "  AND Performances.cancel_datetime IS NULL " +
+                "ORDER BY Performances.datetime DESC " +
+                "LIMIT 1")) {
+
+            ps.setString(1, venueName);
+            ps.setString(2, segment);
+
+            try (ResultSet rs = ps.executeQuery()) {
+                if (!rs.next()) {
+                    System.out.println(
+                            "No earlier performance in the same venue and segment was found."
+                    );
+                    return;
+                }
+
+                previousPid = rs.getInt("pid");
+            }
+        }
+
+        System.out.printf("Here are your suggested price tiers:\n");
+
+        try (PreparedStatement ps = conn.prepareStatement(
+                "SELECT name, price " +
+                "FROM Price_tiers " +
+                "WHERE pid = ? " +
+                "ORDER BY price DESC")) {
+
+            ps.setInt(1, previousPid);
+
+            try (ResultSet rs = ps.executeQuery()) {
+                System.out.printf(
+                        "%-30s %-15s%n",
+                        "Price tier name", "Price"
+                );
+                System.out.println("-".repeat(45));
+
+                while (rs.next()) {
+                    System.out.printf(
+                            "%-30s %-15s%n",
+                            rs.getString("name"),
+                            rs.getBigDecimal("price")
+                    );
+                }
+            }
+        }
+
+        System.out.println("Here are your suggested section-to-pricetier assignments:");
+
+        try (PreparedStatement ps = conn.prepareStatement(
+                "SELECT section_name, pricetier_name " +
+                "FROM Section_pricetier " +
+                "WHERE Section_pricetier.pid = ? ")) {
+
+            ps.setInt(1, previousPid);
+
+            try (ResultSet rs = ps.executeQuery()) {
+                System.out.printf(
+                        "%-30s %-30s%n",
+                        "Section", "Price tier name"
+                );
+                System.out.println("-".repeat(75));
+
+                while (rs.next()) {
+                    System.out.printf(
+                            "%-30s %-30s%n",
+                            rs.getString("section_name"),
+                            rs.getString("pricetier_name")
+                    );
+                }
+            }
         }
     }
 }

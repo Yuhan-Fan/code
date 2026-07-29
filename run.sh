@@ -7,10 +7,10 @@ cd "$(dirname "$0")"
 mkdir -p bin
 
 javac \
-    -cp "lib/mysql-connector-java-8.0.29.jar" \
+    -cp "lib/*" \
     -d bin \
     src/*.java
 
 java \
-    -cp "bin:lib/mysql-connector-java-8.0.29.jar" \
+    -cp "bin:lib/*" \
     Mytix
